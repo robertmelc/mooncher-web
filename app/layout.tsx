@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Bricolage_Grotesque, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-display",
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+const dmSans = DM_Sans({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-body",
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -26,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="cs">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${bricolage.variable} ${dmSans.variable} ${jetbrainsMono.variable} antialiased`}
       >
         {children}
       </body>

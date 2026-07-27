@@ -3,25 +3,170 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --void: #071613;
+  --panel: #0e1f1b;
+  --panel2: #1a382f;
+  --panel3: #234a3f;
+  --teal: #22d3b0;
+  --teal-dim: #0e4a3f;
+  --teal-glow: rgba(34, 211, 176, 0.16);
+  --ink: #eaf6f2;
+  --ink-dim: #7fa69b;
+  --ink-faint: #4c6963;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --danger: #e5786b;
+  --danger-soft: rgba(229, 120, 107, 0.14);
+  --gold: #e8c27a;
+  --radius: 16px;
+  --radius-sm: 10px;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(34, 211, 176, 0.1), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 30%, rgba(34, 211, 176, 0.06), transparent 55%),
+    var(--void);
+  font-family: var(--font-body), sans-serif;
+  min-height: 100vh;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+@layer components {
+  /* ---------- Brand mark — srpek měsíce ---------- */
+  .moon-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    position: relative;
+    flex-shrink: 0;
+    background: radial-gradient(circle at 32% 28%, #cffcf1 0%, #22d3b0 42%, #0a4a3d 100%);
+    box-shadow:
+      0 0 18px var(--teal-glow),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.35),
+      inset 0 2px 3px rgba(255, 255, 255, 0.5);
+  }
+  .moon-mark::after {
+    content: "";
+    position: absolute;
+    top: 1px;
+    left: 20%;
+    width: 76%;
+    height: 76%;
+    border-radius: 50%;
+    background: var(--panel);
+    box-shadow: -2px 0 6px rgba(0, 0, 0, 0.25) inset;
+  }
+  .moon-mark::before {
+    content: "";
+    position: absolute;
+    top: 14%;
+    left: 14%;
+    width: 26%;
+    height: 20%;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.75);
+    filter: blur(1.5px);
+    z-index: 2;
+  }
+
+  /* ---------- Voucher card — signature prvek (glass ticket stub) ---------- */
+  .voucher-card {
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    background:
+      radial-gradient(circle at 90% -20%, rgba(34, 211, 176, 0.3), transparent 55%),
+      linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 40%),
+      linear-gradient(160deg, #123029, #071a16);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    color: var(--ink);
+    backdrop-filter: blur(6px);
+  }
+  .voucher-card .watermark {
+    position: absolute;
+    top: -34px;
+    right: -34px;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, rgba(34, 211, 176, 0.45), transparent 62%);
+    opacity: 0.6;
+  }
+  .voucher-card .stub {
+    width: 64px;
+    flex-shrink: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 0;
+    border-right: 1.5px dashed rgba(255, 255, 255, 0.22);
+  }
+  .voucher-card .stub::before,
+  .voucher-card .stub::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--void);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .voucher-card .stub::before {
+    top: -8px;
+  }
+  .voucher-card .stub::after {
+    bottom: -8px;
+  }
+  .voucher-card .stub-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: var(--font-mono), monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--teal);
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .voucher-card .stub-sub {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: var(--font-mono), monospace;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  /* ---------- Badge ---------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--teal-glow);
+    color: var(--teal);
+    font-family: var(--font-mono), monospace;
+  }
+  .badge::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
   }
 }
