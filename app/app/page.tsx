@@ -1,27 +1,59 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 
 export default function EndUserHome() {
-  const [status, setStatus] = useState<string>("Ověřuji připojení k Supabase…");
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
-    async function checkConnection() {
-      const { count, error } = await supabase
-        .from("vpc_voucher_templates")
-        .select("*", { count: "exact", head: true });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
 
-      if (error) {
-        setStatus(`Supabase připojení: CHYBA (${error.message})`);
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+
+    async function ensureEndUser() {
+      const { data: existing, error: selectError } = await supabase
+        .from("vpc_end_users")
+        .select("id")
+        .eq("auth_user_id", session!.user.id)
+        .maybeSingle();
+
+      if (selectError) {
+        setStatus(`Chyba při čtení vpc_end_users: ${selectError.message}`);
         return;
       }
 
-      setStatus(`Supabase připojení: OK (${count ?? 0} šablon)`);
+      if (existing) return;
+
+      const { error: insertError } = await supabase.from("vpc_end_users").insert({
+        auth_user_id: session!.user.id,
+        email: session!.user.email,
+      });
+
+      if (insertError) {
+        setStatus(`Chyba při vytváření vpc_end_users: ${insertError.message}`);
+      }
     }
 
-    checkConnection();
-  }, []);
+    ensureEndUser();
+  }, [session]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-24">
@@ -29,7 +61,21 @@ export default function EndUserHome() {
       <p className="text-sm text-neutral-500">
         Peněženka, transaction feed, detail vouchru — viz B6 §1.
       </p>
-      <p className="text-sm font-mono">{status}</p>
+
+      {loading ? (
+        <p className="text-sm font-mono">Ověřuji přihlášení…</p>
+      ) : session ? (
+        <p className="text-sm font-mono">Přihlášen jako: {session.user.email}</p>
+      ) : (
+        <p className="text-sm font-mono">
+          Nejste přihlášeni —{" "}
+          <Link href="/app/login" className="underline">
+            přihlásit se
+          </Link>
+        </p>
+      )}
+
+      {status && <p className="text-sm font-mono text-red-600">{status}</p>}
     </main>
   );
 }
