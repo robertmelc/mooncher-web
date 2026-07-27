@@ -177,7 +177,9 @@ export default function EndUserHome() {
         ) : (
           <div className="flex flex-col gap-3.5">
             {vouchers.map((v) => (
-              <VoucherCard key={v.id} {...v} />
+              <Link key={v.id} href={`/app/vouchers/${v.id}`} className="block">
+                <VoucherCard {...v} />
+              </Link>
             ))}
           </div>
         )}

@@ -169,4 +169,42 @@ body {
     border-radius: 50%;
     background: currentColor;
   }
+
+  /* ---------- Barcode (voucher — back side) ---------- */
+  .barcode {
+    height: 36px;
+    margin-top: 14px;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.85) 0 2px,
+      transparent 2px 5px,
+      rgba(255, 255, 255, 0.5) 5px 6px,
+      transparent 6px 9px
+    );
+    border-radius: 3px;
+    opacity: 0.85;
+  }
+
+  /* ---------- QR placeholder ---------- */
+  .qr {
+    width: 96px;
+    height: 96px;
+    border-radius: 12px;
+    background:
+      repeating-conic-gradient(from 0deg, var(--ink) 0deg 90deg, transparent 90deg 180deg) 0 0 / 16px 16px,
+      var(--void);
+    border: 1px solid var(--line-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    position: relative;
+  }
+  .qr::after {
+    content: "";
+    position: absolute;
+    inset: 30px;
+    background: var(--void);
+    border-radius: 4px;
+  }
 }
