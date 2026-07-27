@@ -23,6 +23,7 @@ const config: Config = {
         "line-strong": "var(--line-strong)",
         danger: "var(--danger)",
         "danger-soft": "var(--danger-soft)",
+        positive: "var(--positive)",
         gold: "var(--gold)",
       },
       fontFamily: {
