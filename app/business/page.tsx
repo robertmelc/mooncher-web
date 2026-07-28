@@ -38,40 +38,27 @@ export default function BusinessOnboardingPage() {
   }, []);
 
   useEffect(() => {
-    if (!session?.user.email) return;
+    if (!session) return;
 
     async function loadOperator() {
-      const { data: clientUser, error: clientUserError } = await supabase
-        .from("vpc_client_users")
-        .select("role, client_id")
-        .ilike("email", session!.user.email!)
-        .maybeSingle();
+      // Dočasně přes Route Handler (service role) — RLS na vpc_client_users
+      // je zablokovaná kruhovou závislostí na chybějícím JWT claimu, viz
+      // komentář v app/api/business/operator/route.ts.
+      const res = await fetch("/api/business/operator", {
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
+      const json = await res.json();
 
-      if (clientUserError) {
-        setError(`Chyba při čtení vpc_client_users: ${clientUserError.message}`);
-        return;
-      }
-      if (!clientUser) {
-        setOperator(null);
-        return;
-      }
-
-      const { data: client, error: clientError } = await supabase
-        .from("vpc_clients")
-        .select("name, stripe_connect_status")
-        .eq("id", clientUser.client_id)
-        .maybeSingle();
-
-      if (clientError) {
-        setError(`Chyba při čtení vpc_clients: ${clientError.message}`);
-        return;
-      }
-      if (!client) {
-        setOperator(null);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setOperator(null);
+        } else {
+          setError(json.error ?? "Načtení se nezdařilo.");
+        }
         return;
       }
 
-      setOperator({ role: clientUser.role, client });
+      setOperator({ role: json.role, client: json.client });
     }
 
     loadOperator();
