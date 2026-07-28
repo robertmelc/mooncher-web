@@ -170,6 +170,10 @@ body {
     border-radius: 50%;
     background: currentColor;
   }
+  .badge.gray {
+    background: var(--panel3);
+    color: var(--ink-dim);
+  }
 
   /* ---------- Barcode (voucher — back side) ---------- */
   .barcode {

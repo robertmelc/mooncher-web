@@ -6,7 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { MoonMark } from "@/components/MoonMark";
 import { StatCard } from "@/components/StatCard";
-import { BusinessSidebar } from "@/components/BusinessSidebar";
+import { BusinessShell } from "@/components/BusinessShell";
 import { stripeConnectStatusLabel } from "@/lib/clients";
 import { formatCurrency } from "@/lib/format";
 
@@ -100,13 +100,49 @@ export default function BusinessPage() {
 
   const isDashboard = operator && operator.client.stripe_connect_status === "active";
 
+  if (isDashboard) {
+    return (
+      <BusinessShell title="Přehled">
+        {dashboard === undefined ? (
+          <p className="font-mono text-sm text-ink-dim">Načítám přehled…</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <StatCard label="Aktivní programy" value={String(dashboard!.activeProgramCount)} />
+              <StatCard
+                label="Objem za 30 dní"
+                value={formatCurrency(dashboard!.volume30d, dashboard!.currency)}
+                highlight
+              />
+              <StatCard label="Aktivní vouchery" value={String(dashboard!.activeVoucherCount)} />
+            </div>
+
+            <div
+              className="rounded-sm p-4"
+              style={{
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.035))",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              <div className="mb-1.5 text-[13px] font-semibold">
+                Vyčerpání limitu LNE (1 mil. EUR / 12 měs.)
+              </div>
+              <p className="text-[11.5px] text-ink-faint">
+                Zatím nesledováno — doplní se s denním výpočtem objemu (Edge Function, B1 §6).
+              </p>
+            </div>
+          </>
+        )}
+      </BusinessShell>
+    );
+  }
+
   return (
     <main className="min-h-screen px-5 py-10">
-      <div className={isDashboard ? "mx-auto flex max-w-4xl flex-col gap-6" : "mx-auto flex max-w-lg flex-col gap-6"}>
+      <div className="mx-auto flex max-w-lg flex-col gap-6">
         <header className="border-b border-line pb-4">
-          <h1 className="font-display text-lg font-bold tracking-tight">
-            {isDashboard ? "Přehled" : "Nastavení plateb"}
-          </h1>
+          <h1 className="font-display text-lg font-bold tracking-tight">Nastavení plateb</h1>
         </header>
 
         {authLoading ? (
@@ -129,7 +165,7 @@ export default function BusinessPage() {
           <div className="rounded-sm border border-dashed border-line-strong p-6 text-center text-sm text-ink-faint">
             Tento účet není napojený na žádného klienta.
           </div>
-        ) : !isDashboard ? (
+        ) : (
           <div className="flex flex-col items-center gap-4 pt-8 text-center">
             <MoonMark size={52} />
             <h2 className="font-display text-xl font-bold tracking-tight">Peníze jdou vždy vám</h2>
@@ -146,43 +182,6 @@ export default function BusinessPage() {
               Propojit platební účet
             </button>
             {placeholderMessage && <p className="text-[11.5px] text-teal">{placeholderMessage}</p>}
-          </div>
-        ) : (
-          <div className="flex gap-6">
-            <BusinessSidebar />
-            <div className="flex flex-1 flex-col gap-4">
-              {dashboard === undefined ? (
-                <p className="font-mono text-sm text-ink-dim">Načítám přehled…</p>
-              ) : (
-                <>
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <StatCard label="Aktivní programy" value={String(dashboard!.activeProgramCount)} />
-                    <StatCard
-                      label="Objem za 30 dní"
-                      value={formatCurrency(dashboard!.volume30d, dashboard!.currency)}
-                      highlight
-                    />
-                    <StatCard label="Aktivní vouchery" value={String(dashboard!.activeVoucherCount)} />
-                  </div>
-
-                  <div
-                    className="rounded-sm p-4"
-                    style={{
-                      border: "1px solid rgba(255,255,255,.12)",
-                      background: "linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.035))",
-                      backdropFilter: "blur(10px)",
-                    }}
-                  >
-                    <div className="mb-1.5 text-[13px] font-semibold">
-                      Vyčerpání limitu LNE (1 mil. EUR / 12 měs.)
-                    </div>
-                    <p className="text-[11.5px] text-ink-faint">
-                      Zatím nesledováno — doplní se s denním výpočtem objemu (Edge Function, B1 §6).
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         )}
       </div>
