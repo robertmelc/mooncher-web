@@ -167,7 +167,10 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
         ) : !session ? (
           <p className="font-mono text-sm text-ink-dim">
             Nejste přihlášeni —{" "}
-            <Link href="/app/login" className="text-teal underline">
+            <Link
+              href={`/app/login?next=${encodeURIComponent(`/app/vouchers/${params.id}`)}`}
+              className="text-teal underline"
+            >
               přihlásit se
             </Link>
           </p>

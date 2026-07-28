@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { MoonMark } from "@/components/MoonMark";
+import { Button } from "@/components/Button";
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") || "/app";
+
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -16,7 +22,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/app`,
+        emailRedirectTo: `${window.location.origin}${next}`,
       },
     });
 
@@ -31,8 +37,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-24">
-      <h1 className="text-2xl font-semibold">Přihlášení</h1>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-5 py-24 text-center">
+      <MoonMark size={44} />
+      <h1 className="font-display text-2xl font-bold tracking-tight">Přihlášení</h1>
       <form onSubmit={handleSubmit} className="flex w-full max-w-xs flex-col gap-3">
         <input
           type="email"
@@ -40,17 +47,19 @@ export default function LoginPage() {
           placeholder="vas@email.cz"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="rounded border px-3 py-2 text-black"
+          className="rounded-sm border border-line-strong bg-panel px-3.5 py-3 text-center text-sm text-ink"
         />
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
-          {loading ? "Odesílám…" : "Poslat přihlašovací odkaz"}
-        </button>
+        <Button type="submit">{loading ? "Odesílám…" : "Poslat přihlašovací odkaz"}</Button>
       </form>
-      {status && <p className="text-center text-sm font-mono">{status}</p>}
+      {status && <p className="text-[11.5px] text-ink-dim">{status}</p>}
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
