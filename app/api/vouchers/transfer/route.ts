@@ -15,7 +15,7 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, id: str
     .from("vpc_vouchers")
     .select(
       `id, status, account_id,
-       account:vpc_accounts ( id, end_user_id ),
+       account:vpc_accounts!account_id ( id, end_user_id ),
        voucher_program:vpc_voucher_programs ( currency )`
     )
     .eq("id", id)
