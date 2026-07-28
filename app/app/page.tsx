@@ -181,6 +181,14 @@ export default function EndUserHome() {
                 <VoucherCard {...v} />
               </Link>
             ))}
+            {vouchers.length >= 2 && (
+              <Link
+                href="/app/vouchers/transfer"
+                className="mt-1 rounded-sm border border-dashed border-line-strong px-3.5 py-2.5 text-center text-[11.5px] font-medium text-ink-dim"
+              >
+                Přesun mezi vouchery
+              </Link>
+            )}
           </div>
         )}
       </div>

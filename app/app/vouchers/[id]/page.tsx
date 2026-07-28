@@ -187,25 +187,31 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
               <span className="badge">{voucher.status}</span>
             </div>
 
-            <div className="flex justify-center gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setFlipped((f) => !f)}
-                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-[11.5px] font-medium text-ink-dim"
+                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-center text-[11.5px] font-medium text-ink-dim"
               >
                 ↻ Otočit kartu
               </button>
               <Link
                 href={`/app/vouchers/${voucher.id}/history`}
-                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-[11.5px] font-medium text-ink-dim"
+                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-center text-[11.5px] font-medium text-ink-dim"
               >
                 Historie
               </Link>
               <Link
                 href={`/app/vouchers/${voucher.id}/load`}
-                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-[11.5px] font-medium text-ink-dim"
+                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-center text-[11.5px] font-medium text-ink-dim"
               >
                 Nabít
+              </Link>
+              <Link
+                href="/app/vouchers/transfer"
+                className="rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-center text-[11.5px] font-medium text-ink-dim"
+              >
+                Přesun
               </Link>
             </div>
 
