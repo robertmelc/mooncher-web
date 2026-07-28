@@ -292,4 +292,16 @@ body {
     border-color: var(--teal);
     background: radial-gradient(circle, var(--teal) 40%, transparent 44%);
   }
+
+  /* ---------- Eclipse card glow ---------- */
+  .eclipse-glow {
+    position: absolute;
+    top: -40px;
+    right: -30px;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232, 194, 122, 0.25), transparent 65%);
+    pointer-events: none;
+  }
 }
