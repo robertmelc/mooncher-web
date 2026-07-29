@@ -125,9 +125,16 @@ export default function BusinessProgramsPage() {
                   }}
                 >
                   <span className="text-[13.5px] font-semibold">{p.name}</span>
-                  <span className={`badge ${p.status === "active" ? "" : "gray"}`}>
-                    {programStatusLabel(p.status)}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {p.status !== "retired" && (
+                      <Link href={`/business/programs/${p.id}/network`} className="text-[11.5px] text-teal underline">
+                        Nastavit síť
+                      </Link>
+                    )}
+                    <span className={`badge ${p.status === "active" ? "" : "gray"}`}>
+                      {programStatusLabel(p.status)}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

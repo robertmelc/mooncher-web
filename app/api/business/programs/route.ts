@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const { data: programs, error: programsError } = await admin
     .from("vpc_voucher_programs")
-    .select("id, name, voucher_type, status, currency, created_at")
+    .select("id, name, voucher_type, status, currency, network_scope, design_config, created_at")
     .eq("client_id", operator.clientId)
     .order("created_at", { ascending: false });
 
