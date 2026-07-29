@@ -23,7 +23,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 export type ClientOperatorResult =
-  | { ok: true; role: string; clientId: string }
+  | { ok: true; role: string; clientId: string; operatorId: string }
   | { ok: false; status: number; error: string };
 
 export async function resolveClientOperator(
@@ -41,7 +41,7 @@ export async function resolveClientOperator(
 
   const { data: clientUser, error: clientUserError } = await admin
     .from("vpc_client_users")
-    .select("role, client_id")
+    .select("id, role, client_id")
     .ilike("email", userData.user.email)
     .maybeSingle();
 
@@ -52,5 +52,5 @@ export async function resolveClientOperator(
     return { ok: false, status: 404, error: "Tento účet není napojený na žádného klienta." };
   }
 
-  return { ok: true, role: clientUser.role, clientId: clientUser.client_id };
+  return { ok: true, role: clientUser.role, clientId: clientUser.client_id, operatorId: clientUser.id };
 }

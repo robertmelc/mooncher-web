@@ -7,7 +7,7 @@ const NAV_ITEMS: { label: string; href?: string }[] = [
   { label: "Přehled", href: "/business" },
   { label: "Programy", href: "/business/programs" },
   { label: "Šablony", href: "/business/templates" },
-  { label: "POS" },
+  { label: "POS", href: "/business/pos" },
   { label: "Reporty" },
 ];
 
