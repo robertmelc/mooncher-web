@@ -21,7 +21,6 @@ export default function BusinessTemplatesPage() {
   const [templates, setTemplates] = useState<Template[] | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
-  const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -141,17 +140,14 @@ export default function BusinessTemplatesPage() {
               </Link>
             ))}
 
-            <button
-              type="button"
-              onClick={() => setPlaceholderMessage("K dispozici brzy.")}
+            <Link
+              href="/business/templates/custom-request"
               className="thumb flex flex-col items-center justify-center gap-1 p-4 text-center text-[12px] font-semibold text-ink-dim"
             >
               <span className="text-lg leading-none text-teal">+</span>
               <span>Vlastní design</span>
-            </button>
+            </Link>
           </div>
-
-          {placeholderMessage && <p className="text-[11.5px] text-teal">{placeholderMessage}</p>}
         </>
       )}
     </BusinessShell>
