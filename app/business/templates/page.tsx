@@ -135,10 +135,10 @@ export default function BusinessTemplatesPage() {
 
           <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
             {filteredTemplates?.map((t) => (
-              <div key={t.id} className="thumb">
+              <Link key={t.id} href={`/business/templates/${t.id}`} className="thumb block">
                 <div className="art" />
                 <div className="px-3 py-2.5 text-[12px] font-semibold">{t.name}</div>
-              </div>
+              </Link>
             ))}
 
             <button
