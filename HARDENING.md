@@ -86,4 +86,38 @@ záznamů (později smazaných, šlo o testovací data).
 
 ---
 
-*Aktualizováno: obrazovka adm-1 (Cashflow), 29. 7. 2026.*
+## 5. Chybějící denní Edge Function pro LNE compliance (CZK→EUR)
+
+**Problém:** `vpc_compliance_volume_snapshots` (B1 §6) je navržená tak, že
+`total_volume_eur` a `threshold_pct` počítá a zapisuje denní scheduled job
+(Supabase Edge Function + cron) — ten nikdy nevznikl, tabulka je prázdná.
+Bez něj appka nemá žádný způsob, jak sledovat vyčerpání limitu 1 mil.
+EUR/12 měsíců z LNE výjimky (právní brief) — metrika, na které přímo stojí
+regulatorní pozice celé platformy.
+
+Narazili jsme na to poprvé u obrazovky biz-2 (dashboard klienta — karta
+"Vyčerpání limitu LNE" ukazuje natvrdo "Zatím nesledováno",
+`app/business/page.tsx:132`), znovu u adm-3 (Compliance monitoring —
+`app/api/admin/compliance/route.ts` dotazuje reálnou tabulku, ale ta je
+prázdná, takže výsledek je stejný pro každého klienta).
+
+**Proč to nejde obejít na rychlo:** klienti účtují v CZK, limit je v EUR.
+Správný rolling 12měsíční přepočet potřebuje historický kurz ke dni každé
+transakce, ne jeden "aktuální" kurz aplikovaný na celý součet zpětně — jinak
+číslo jen vypadá důvěryhodně, ale je fakticky nesprávné. U právně podložené
+metriky (ne interní analytiky) je nesprávné číslo horší než žádné, proto
+obě obrazovky vědomě ukazují "nesledováno" místo dopočtu na místě.
+
+**Skutečné řešení:** Supabase Edge Function na denním cronu, která pro
+každého klienta: (1) sečte objem transakcí za posledních 12 měsíců podle
+data, (2) převede na EUR kurzem platným k datu KAŽDÉ transakce (potřeba
+spolehlivý zdroj historických kurzů, ne jen aktuální rate), (3) zapíše
+`total_volume_eur` + `threshold_pct` do `vpc_compliance_volume_snapshots`,
+(4) nastaví `alert_sent = true` při překročení 80 %, jak doporučuje B1 §6.
+
+Odkazy v kódu: `app/business/page.tsx` (karta LNE),
+`app/api/admin/compliance/route.ts`, `lib/compliance.ts`.
+
+---
+
+*Aktualizováno: obrazovka adm-3 (Compliance monitoring), 30. 7. 2026.*
