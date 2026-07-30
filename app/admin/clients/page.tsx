@@ -128,7 +128,9 @@ export default function AdminClientsPage() {
               }}
             >
               <div className="flex flex-col gap-1.5">
-                <span className="text-[13.5px] font-semibold">{client.name}</span>
+                <Link href={`/admin/clients/${client.id}`} className="text-[13.5px] font-semibold hover:underline">
+                  {client.name}
+                </Link>
                 <div className="flex gap-2">
                   <span className={`badge ${clientStatusBadgeVariant(client.status)}`}>
                     {clientStatusLabel(client.status)}
