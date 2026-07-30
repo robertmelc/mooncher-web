@@ -126,4 +126,46 @@ Odkazy v kódu: `app/business/page.tsx` (karta LNE),
 
 ---
 
-*Aktualizováno: obrazovka adm-3 (Compliance monitoring), 30. 7. 2026.*
+## 6. Chybějící HMAC podpis QR kódů (B4 §3)
+
+**Problém:** B4 §3 popisuje `qr_payload`/`qr_signature` jako HMAC-SHA256
+podepsané se secret_key per voucher program, uloženým v Supabase Vaultu —
+server by při skenování přepočítal HMAC a porovnal, aby odhalil padělaný/
+zmanipulovaný QR kód. Nic z týhle vrstvy nikde v appce neexistuje.
+
+Aktivační "token" je dnes prostě syrové `vpc_vouchers.id` (žádný podpis),
+POS lookup/redeem `qr_signature` vůbec nekontroluje. Obrazovka app-9
+(Darovat voucher) je první místo, které `qr_payload`/`qr_signature`
+skutečně GENERUJE (dřív vznikaly jen ručně přes SQL testovací fixtures) —
+`lib/voucherIssuance.ts` proto používá zjevně označený placeholder
+(`qr_payload = voucher.id`, `qr_signature` = SHA-256 hash bez secretu),
+ne skutečný HMAC — stejný, už zavedený kompromis jako u aktivace/POS.
+
+**Skutečné řešení:** HMAC-SHA256 nad `qr_payload` se secret_key z
+Supabase Vault (per program), ověřováno při každém skenování/aktivaci.
+
+Odkazy v kódu: `lib/voucherIssuance.ts`, `app/api/vouchers/gift/route.ts`.
+
+---
+
+## 7. Chybí SMS/e-mail transakční notifikační kanál
+
+**Problém:** Appka nemá žádný způsob, jak automaticky doručit zprávu
+mimo magic-link přihlášení (žádné SMS API, žádný transakční e-mailing).
+`ONESIGNAL_APP_ID`/`ONESIGNAL_REST_API_KEY` v `.env.example` jsou
+připravené proměnné z B7, ale nic je nevyužívá.
+
+Poprvé se to reálně projevilo u app-9 (Darovat voucher) — po vytvoření
+daru nejde příjemci automaticky poslat aktivační odkaz. Řešeno pro tuhle
+fázi zobrazením odkazu odesílateli k ručnímu přeposlání (kopírování +
+`navigator.share`), ne automatickým doručením.
+
+**Skutečné řešení:** napojit transakční SMS bránu (Twilio/SMSbrana.cz)
+a/nebo e-mail (SendGrid/Postmark) na `vpc_notifications_log` eventy
+z B2 (`voucher_issued`, `voucher_activated`, `voucher_expiring_soon`...).
+
+Odkazy v kódu: `app/app/vouchers/[id]/gift/page.tsx`.
+
+---
+
+*Aktualizováno: obrazovka app-9 (Darovat voucher), 30. 7. 2026.*

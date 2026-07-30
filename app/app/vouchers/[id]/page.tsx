@@ -216,6 +216,12 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
               >
                 Přesun
               </Link>
+              <Link
+                href={`/app/vouchers/${voucher.id}/gift`}
+                className="col-span-2 rounded-sm border border-dashed border-line-strong px-3.5 py-2 text-center text-[11.5px] font-medium text-ink-dim"
+              >
+                Darovat
+              </Link>
             </div>
 
             {!flipped && (

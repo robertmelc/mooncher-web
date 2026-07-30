@@ -14,6 +14,7 @@ type VoucherRow = {
   account_id: string | null;
   issued_to_name: string | null;
   recipient_phone: string | null;
+  gifted_by_account_id: string | null;
   voucher_program_id: string;
   voucher_program: {
     name: string;
@@ -60,7 +61,7 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, token: 
   const { data, error } = await admin
     .from("vpc_vouchers")
     .select(
-      `id, status, account_id, issued_to_name, recipient_phone, voucher_program_id,
+      `id, status, account_id, issued_to_name, recipient_phone, gifted_by_account_id, voucher_program_id,
        voucher_program:vpc_voucher_programs (
          name, voucher_type, currency,
          client:vpc_clients ( name )
@@ -232,6 +233,37 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   if (!updated) {
     await logAttempt(admin, token, "voucher.activation_rejected", { reason: "race_lost" });
     return NextResponse.json({ ok: false, error: "Voucher už byl aktivován." }, { status: 409 });
+  }
+
+  // Darovaný voucher (obrazovka app-9): účet při vydání ještě neexistoval
+  // (vpc_ledger_entries.account_id je NOT NULL), takže ledger credit z
+  // vpc_transactions typu 'load' vzniklé při darování čeká přesně na
+  // tenhle okamžik — dohledaný přes metadata.gift_voucher_id (stejný
+  // vzorec jako from/to_account_id u transferu). Běží to jen jednou za
+  // voucher, protože se sem dostaneme jen při vítězství atomického
+  // přechodu výše. Pokud transakce chybí (neměla by), aktivace i tak
+  // uspěje — účet už je platně založený — jen se to zaloguje k dohledání.
+  if (voucher.gifted_by_account_id) {
+    const { data: giftTx } = await admin
+      .from("vpc_transactions")
+      .select("id, gross_amount")
+      .eq("metadata->>gift_voucher_id", token)
+      .maybeSingle();
+
+    if (giftTx) {
+      const { error: creditError } = await admin.from("vpc_ledger_entries").insert({
+        account_id: accountId,
+        transaction_id: giftTx.id,
+        direction: "credit",
+        amount: giftTx.gross_amount,
+        balance_after: giftTx.gross_amount,
+      });
+      if (creditError) {
+        await logAttempt(admin, token, "voucher.gift_credit_failed", { error: creditError.message });
+      }
+    } else {
+      await logAttempt(admin, token, "voucher.gift_credit_missing", {});
+    }
   }
 
   await logAttempt(admin, token, "voucher.activated", { account_id: accountId, status: "activated" });
