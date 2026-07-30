@@ -33,3 +33,17 @@ export function defaultTokenValues(schema: TokenSchema): Record<string, string> 
   }
   return values;
 }
+
+const VALID_TOKEN_TYPES = ["color", "text", "image", "icon_picker", "multiselect"];
+
+// Server-side tvarová validace token_schema před uložením (adm-5) — šablona
+// je admin-authored, ale špatný tvar by rozbil TokenField/renderování na
+// biz-5 pro reálné klienty, takže se to validuje bez ohledu na důvěru k autorovi.
+export function isValidTokenSchema(value: unknown): value is TokenSchema {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every((field) => {
+    if (typeof field !== "object" || field === null || Array.isArray(field)) return false;
+    const type = (field as Record<string, unknown>).type;
+    return typeof type === "string" && VALID_TOKEN_TYPES.includes(type);
+  });
+}

@@ -1,4 +1,4 @@
-export const TEMPLATE_CATEGORIES = ["membership", "gift", "loyalty", "event"] as const;
+export const TEMPLATE_CATEGORIES = ["membership", "gift", "loyalty", "event", "discount"] as const;
 
 const CATEGORY_LABELS: Record<string, string> = {
   membership: "Membership",

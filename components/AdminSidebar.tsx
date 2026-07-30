@@ -7,7 +7,7 @@ const NAV_ITEMS: { label: string; href?: string }[] = [
   { label: "Cashflow", href: "/admin" },
   { label: "Klienti", href: "/admin/clients" },
   { label: "Compliance", href: "/admin/compliance" },
-  { label: "Šablony" },
+  { label: "Šablony", href: "/admin/templates" },
   { label: "Audit log" },
 ];
 
