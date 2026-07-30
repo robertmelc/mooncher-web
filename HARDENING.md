@@ -80,6 +80,12 @@ stejné testovací session napříč restarty dev serveru vyvolalo smyčku
 `onAuthStateChange`, která vytvořila desítky duplicitních audit log
 záznamů (později smazaných, šlo o testovací data).
 
+Znovu pozorováno při testování adm-6 (Audit log) — testovací tab
+ponechaný otevřený na `/admin/clients/[id]` (adm-4) po dobu ~11 minut
+vytvořil 22 duplicitních `admin.client_detail_viewed` záznamů na pozadí,
+i bez jakékoli interakce. Potvrzuje, že jde o reálný, opakovatelný jev,
+ne izolovanou náhodu z jednoho testu.
+
 **Skutečné řešení:** nahradit `[session]` stabilnějším primitivem, např.
 `session?.access_token` nebo `session?.user?.id`, napříč všemi stránkami
 — rozsáhlejší refaktoring, ne bodová oprava jedné obrazovky.
