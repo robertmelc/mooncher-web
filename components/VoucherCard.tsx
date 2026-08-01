@@ -7,6 +7,11 @@ type VoucherCardProps = {
   status: string;
   flipped?: boolean;
   validUntil?: string;
+  // Volitelný akcent z design_config.tokens.brand_color klientova programu —
+  // stejný color-mix() vzorec jako u skutečných šablon na detailu (03),
+  // jen aplikovaný na VoucherCard místo syrového HTML. Bez tohohle propu
+  // karta vypadá jako dřív (natvrdo teal).
+  accentColor?: string;
 };
 
 export function VoucherCard({
@@ -18,10 +23,23 @@ export function VoucherCard({
   status,
   flipped = false,
   validUntil,
+  accentColor,
 }: VoucherCardProps) {
+  const cardStyle = accentColor
+    ? {
+        background: `radial-gradient(circle at 90% -20%, color-mix(in srgb, ${accentColor} 30%, transparent), transparent 55%), linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,0) 40%), linear-gradient(160deg, color-mix(in srgb, ${accentColor} 22%, #123029), #071a16 70%)`,
+      }
+    : undefined;
+  const watermarkStyle = accentColor
+    ? {
+        background: `radial-gradient(circle at 35% 35%, color-mix(in srgb, ${accentColor} 45%, transparent), transparent 62%)`,
+      }
+    : undefined;
+  const eyebrowStyle = accentColor ? { color: accentColor } : undefined;
+
   return (
-    <div className="voucher-card">
-      <div className="watermark" aria-hidden="true" />
+    <div className="voucher-card" style={cardStyle}>
+      <div className="watermark" style={watermarkStyle} aria-hidden="true" />
       <div className="stub">
         <div className="stub-label">Voucher</div>
         <div className="stub-sub">Digital</div>
@@ -29,7 +47,12 @@ export function VoucherCard({
       {flipped ? (
         <div className="relative z-10 min-w-0 flex-1 p-5">
           <div className="flex items-center justify-between gap-2">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-teal">Podmínky</div>
+            <div
+              className={`font-mono text-[10px] uppercase tracking-wider ${accentColor ? "" : "text-teal"}`}
+              style={eyebrowStyle}
+            >
+              Podmínky
+            </div>
             <span className="badge">{status}</span>
           </div>
           <div className="mt-1 font-display text-base font-extrabold tracking-tight">
@@ -48,7 +71,12 @@ export function VoucherCard({
       ) : (
         <div className="relative z-10 min-w-0 flex-1 p-5">
           <div className="flex items-center justify-between gap-2">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-teal">{eyebrow}</div>
+            <div
+              className={`font-mono text-[10px] uppercase tracking-wider ${accentColor ? "" : "text-teal"}`}
+              style={eyebrowStyle}
+            >
+              {eyebrow}
+            </div>
             <span className="badge">{status}</span>
           </div>
           <div className="mt-1 font-display text-xl font-extrabold tracking-tight">{title}</div>

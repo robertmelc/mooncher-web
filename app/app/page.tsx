@@ -18,6 +18,7 @@ type VoucherWithProgram = {
     name: string;
     voucher_type: string;
     currency: string;
+    design_config: { tokens?: Record<string, string> } | null;
     client: { name: string } | null;
   } | null;
 };
@@ -30,6 +31,7 @@ type VoucherCardData = {
   amount: string;
   code: string;
   status: string;
+  accentColor?: string;
 };
 
 const ACTIVE_STATUSES = ["issued", "activated", "partially_used"];
@@ -96,7 +98,7 @@ export default function EndUserHome() {
           .select(
             `id, code, status, account_id,
              voucher_program:vpc_voucher_programs (
-               name, voucher_type, currency,
+               name, voucher_type, currency, design_config,
                client:vpc_clients ( name )
              )`
           )
@@ -140,6 +142,7 @@ export default function EndUserHome() {
             amount: formatCurrency(balance, program.currency),
             code: v.code,
             status: voucherStatusLabel(v.status),
+            accentColor: program.design_config?.tokens?.brand_color,
           };
         });
 
