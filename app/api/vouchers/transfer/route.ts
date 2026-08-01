@@ -7,7 +7,7 @@ type VoucherRow = {
   status: string;
   account_id: string;
   account: { id: string; end_user_id: string } | null;
-  voucher_program: { currency: string } | null;
+  voucher_program: { currency: string; balance_mode: string } | null;
 };
 
 async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, id: string) {
@@ -16,7 +16,7 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, id: str
     .select(
       `id, status, account_id,
        account:vpc_accounts!account_id ( id, end_user_id ),
-       voucher_program:vpc_voucher_programs ( currency )`
+       voucher_program:vpc_voucher_programs ( currency, balance_mode )`
     )
     .eq("id", id)
     .maybeSingle();
@@ -130,6 +130,14 @@ export async function POST(req: NextRequest) {
   if (fromVoucher.voucher_program.currency !== toVoucher.voucher_program.currency) {
     return NextResponse.json(
       { ok: false, error: "Nelze přesouvat mezi vouchery v různých měnách." },
+      { status: 400 }
+    );
+  }
+  // 'isolated' program = pevně domluvená hodnota vouchru pro konkrétního
+  // partnera (viz Guardian) — přesun by tuhle hodnotu uměle měnil.
+  if (fromVoucher.voucher_program.balance_mode === "isolated" || toVoucher.voucher_program.balance_mode === "isolated") {
+    return NextResponse.json(
+      { ok: false, error: "Přesun není u tohoto typu vouchru povolen." },
       { status: 400 }
     );
   }

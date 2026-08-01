@@ -25,6 +25,7 @@ type VoucherRow = {
     name: string;
     voucher_type: string;
     currency: string;
+    balance_mode: string;
     client: { name: string } | null;
   } | null;
 };
@@ -69,7 +70,7 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, token: 
       `id, status, account_id, issued_to_name, message, recipient_phone, recipient_email, requires_auth,
        is_admin_issued, gifted_by_account_id, voucher_program_id,
        voucher_program:vpc_voucher_programs (
-         name, voucher_type, currency,
+         name, voucher_type, currency, balance_mode,
          client:vpc_clients ( name )
        )`
     )
@@ -244,26 +245,25 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     }
   }
 
-  // Najít nebo založit účet pro (end_user, voucher_program)
-  const { data: existingAccount, error: accountSelectError } = await admin
-    .from("vpc_accounts")
-    .select("id")
-    .eq("end_user_id", endUserId)
-    .eq("voucher_program_id", voucher.voucher_program_id)
-    .maybeSingle();
-
-  if (accountSelectError) {
-    return NextResponse.json({ ok: false, error: accountSelectError.message }, { status: 500 });
-  }
-
-  let accountId = existingAccount?.id as string | undefined;
-  if (!accountId) {
+  // Účet pro (end_user, voucher_program) — u 'pooled' programů (nabíjecí/
+  // věrnostní) sdílí všechny vouchery stejného člověka na stejném programu
+  // jeden rostoucí zůstatek, proto se existující účet hledá a znovupoužije.
+  // U 'isolated' programů (např. Guardian — pevně domluvená hodnota s
+  // partnerem pro KAŽDÝ voucher zvlášť) by sdílení účtu dvou různých
+  // vouchrů omylem sečetlo jejich smluvně oddělené částky — proto se tu
+  // vždy zakládá nový, izolovaný účet, bez ohledu na to, jestli člověk už
+  // na tomhle programu nějaký účet má. DB partial unique index
+  // (vpc_accounts_pooled_unique, jen WHERE balance_mode='pooled') brání
+  // duplicitě u pooled větve, u isolated žádnou uniqueness nevynucuje.
+  let accountId: string;
+  if (program.balance_mode === "isolated") {
     const { data: newAccount, error: accountInsertError } = await admin
       .from("vpc_accounts")
       .insert({
         end_user_id: endUserId,
         voucher_program_id: voucher.voucher_program_id,
         currency: program.currency,
+        balance_mode: "isolated",
       })
       .select("id")
       .single();
@@ -272,6 +272,37 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       return NextResponse.json({ ok: false, error: accountInsertError.message }, { status: 500 });
     }
     accountId = newAccount.id;
+  } else {
+    const { data: existingAccount, error: accountSelectError } = await admin
+      .from("vpc_accounts")
+      .select("id")
+      .eq("end_user_id", endUserId)
+      .eq("voucher_program_id", voucher.voucher_program_id)
+      .maybeSingle();
+
+    if (accountSelectError) {
+      return NextResponse.json({ ok: false, error: accountSelectError.message }, { status: 500 });
+    }
+
+    if (existingAccount) {
+      accountId = existingAccount.id;
+    } else {
+      const { data: newAccount, error: accountInsertError } = await admin
+        .from("vpc_accounts")
+        .insert({
+          end_user_id: endUserId,
+          voucher_program_id: voucher.voucher_program_id,
+          currency: program.currency,
+          balance_mode: "pooled",
+        })
+        .select("id")
+        .single();
+
+      if (accountInsertError) {
+        return NextResponse.json({ ok: false, error: accountInsertError.message }, { status: 500 });
+      }
+      accountId = newAccount.id;
+    }
   }
 
   // Atomický přechod issued -> activated — WHERE hlídá race condition / dvojí aktivaci

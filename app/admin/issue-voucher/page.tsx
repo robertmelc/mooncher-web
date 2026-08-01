@@ -9,7 +9,11 @@ import { AdminShell } from "@/components/AdminShell";
 import { Button } from "@/components/Button";
 
 type Client = { id: string; name: string };
-type Program = { id: string; name: string; status: string; currency: string };
+// clientId/clientName jsou vyplněné jen v režimu "Všichni klienti" (odtud
+// se dopočítává skutečný clientId formuláře při odeslání — viz effectiveClientId).
+type Program = { id: string; name: string; status: string; currency: string; clientId?: string; clientName?: string };
+
+const ALL_CLIENTS = "__all__";
 
 function IssueVoucherForm() {
   const searchParams = useSearchParams();
@@ -70,6 +74,36 @@ function IssueVoucherForm() {
     }
 
     async function loadPrograms() {
+      if (clientId === ALL_CLIENTS) {
+        const res = await fetch("/api/admin/programs", {
+          headers: { Authorization: `Bearer ${session!.access_token}` },
+        });
+        const json = await res.json();
+        if (res.ok) {
+          type RawProgram = {
+            id: string;
+            name: string;
+            status: string;
+            currency: string;
+            client_id: string;
+            client: { name: string } | null;
+          };
+          const mapped = (json.programs as RawProgram[])
+            .map((p) => ({
+              id: p.id,
+              name: p.name,
+              status: p.status,
+              currency: p.currency,
+              clientId: p.client_id,
+              clientName: p.client?.name ?? "",
+            }))
+            .sort((a, b) => a.clientName.localeCompare(b.clientName) || a.name.localeCompare(b.name));
+          setPrograms(mapped);
+          setProgramId("");
+        }
+        return;
+      }
+
       const res = await fetch(`/api/admin/clients/${clientId}/programs`, {
         headers: { Authorization: `Bearer ${session!.access_token}` },
       });
@@ -88,12 +122,17 @@ function IssueVoucherForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, clientId]);
 
+  // V režimu "Všichni klienti" formulář žádného klienta přímo nevybírá —
+  // dopočítá se z klienta zvoleného programu (ten ho jednoznačně nese).
+  const selectedProgram = programs.find((p) => p.id === programId);
+  const effectiveClientId = clientId === ALL_CLIENTS ? selectedProgram?.clientId : clientId;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!session) return;
 
     const numericAmount = Number(amount);
-    if (!clientId || !programId || !numericAmount || numericAmount <= 0) {
+    if (!effectiveClientId || !programId || !numericAmount || numericAmount <= 0) {
       setResult({ ok: false, message: "Vyberte klienta, program a zadejte platnou částku." });
       return;
     }
@@ -105,7 +144,7 @@ function IssueVoucherForm() {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({
-        clientId,
+        clientId: effectiveClientId,
         programId,
         amount: numericAmount,
         recipientPhone: recipientPhone || undefined,
@@ -202,6 +241,7 @@ function IssueVoucherForm() {
             className="rounded-sm border border-line-strong bg-panel px-3 py-2 text-sm text-ink"
           >
             <option value="">Vyberte klienta</option>
+            <option value={ALL_CLIENTS}>Všichni klienti</option>
             {clients?.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -219,7 +259,7 @@ function IssueVoucherForm() {
             <option value="">{clientId ? "Vyberte program" : "Nejdřív vyberte klienta"}</option>
             {programs.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} ({p.currency})
+                {p.clientName ? `${p.clientName} – ${p.name}` : p.name} ({p.currency})
               </option>
             ))}
           </select>

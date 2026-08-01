@@ -16,6 +16,7 @@ type SourceVoucherRow = {
     currency: string;
     default_validity_days: number | null;
     max_load_amount: number | null;
+    balance_mode: string;
   } | null;
 };
 
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
     .select(
       `id, status, account_id,
        account:vpc_accounts!account_id ( id, end_user_id ),
-       voucher_program:vpc_voucher_programs ( id, currency, default_validity_days, max_load_amount )`
+       voucher_program:vpc_voucher_programs ( id, currency, default_validity_days, max_load_amount, balance_mode )`
     )
     .eq("id", voucherId)
     .maybeSingle();
@@ -114,6 +115,15 @@ export async function POST(req: NextRequest) {
   }
 
   const program = source.voucher_program;
+  // 'isolated' program = pevně domluvená hodnota vouchru pro konkrétního
+  // partnera (viz Guardian) — darování by tuhle hodnotu uměle vykrajovalo,
+  // stejná logika jako u přesunu.
+  if (program.balance_mode === "isolated") {
+    return NextResponse.json(
+      { ok: false, error: "Darování není u tohoto typu vouchru povoleno." },
+      { status: 400 }
+    );
+  }
   if (program.max_load_amount && amount > program.max_load_amount) {
     return NextResponse.json(
       { ok: false, error: `Maximální částka daru je ${program.max_load_amount}.` },
