@@ -7,6 +7,11 @@ import { supabase } from "@/lib/supabase/client";
 import { VoucherCard } from "@/components/VoucherCard";
 import { formatCurrency } from "@/lib/format";
 import { voucherStatusLabel, voucherTypeLabel } from "@/lib/vouchers";
+import {
+  renderTemplateHtml,
+  defaultTokenValues,
+  type TokenSchema,
+} from "@/lib/renderTemplate";
 
 type VoucherWithProgram = {
   id: string;
@@ -18,6 +23,7 @@ type VoucherWithProgram = {
     name: string;
     voucher_type: string;
     currency: string;
+    design_config: { template_id?: string; tokens?: Record<string, string> } | null;
     client: { name: string } | null;
   } | null;
 };
@@ -33,10 +39,18 @@ type VoucherDetail = {
   validUntil?: string;
 };
 
+type TemplateData = {
+  front_layout: string;
+  back_layout: string;
+  token_schema: TokenSchema;
+  designTokens: Record<string, string>;
+};
+
 export default function VoucherDetailPage({ params }: { params: { id: string } }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [voucher, setVoucher] = useState<VoucherDetail | null | undefined>(undefined);
+  const [template, setTemplate] = useState<TemplateData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
 
@@ -95,7 +109,7 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
         .select(
           `id, code, status, account_id, valid_until,
            voucher_program:vpc_voucher_programs (
-             name, voucher_type, currency,
+             name, voucher_type, currency, design_config,
              client:vpc_clients ( name )
            )`
         )
@@ -143,10 +157,43 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
           ? new Date(row.valid_until).toLocaleDateString("cs-CZ")
           : undefined,
       });
+
+      // Reálná šablona jen na detailu (03) — viz konverzace k render logice.
+      // Fallback (žádný stav) necháváme, pokud program nemá design_config
+      // nastavený, nebo šablonu z nějakého důvodu nejde načíst.
+      const templateId = program.design_config?.template_id;
+      if (templateId) {
+        const { data: templateRow } = await supabase
+          .from("vpc_voucher_templates")
+          .select("front_layout, back_layout, token_schema")
+          .eq("id", templateId)
+          .maybeSingle();
+
+        if (templateRow) {
+          setTemplate({
+            front_layout: templateRow.front_layout,
+            back_layout: templateRow.back_layout,
+            token_schema: templateRow.token_schema as TokenSchema,
+            designTokens: program.design_config?.tokens ?? {},
+          });
+        }
+      }
     }
 
     loadVoucher();
   }, [session, params.id]);
+
+  const templateRenderHtml =
+    voucher && template
+      ? renderTemplateHtml(flipped ? template.back_layout : template.front_layout, {
+          ...defaultTokenValues(template.token_schema),
+          ...template.designTokens,
+          eyebrow: voucher.eyebrow,
+          amount: voucher.amount,
+          code: voucher.code,
+          valid_until: voucher.validUntil ? `Platnost do ${voucher.validUntil}` : "Bez expirace",
+        })
+      : null;
 
   return (
     <main className="min-h-screen px-5 py-10">
@@ -184,7 +231,11 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
           </div>
         ) : (
           <>
-            <VoucherCard {...voucher} flipped={flipped} />
+            {templateRenderHtml !== null ? (
+              <div dangerouslySetInnerHTML={{ __html: templateRenderHtml }} />
+            ) : (
+              <VoucherCard {...voucher} flipped={flipped} />
+            )}
 
             <div className="flex justify-center">
               <span className="badge">{voucher.status}</span>

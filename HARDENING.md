@@ -168,4 +168,29 @@ Odkazy v kódu: `app/app/vouchers/[id]/gift/page.tsx`.
 
 ---
 
-*Aktualizováno: obrazovka app-9 (Darovat voucher), 30. 7. 2026.*
+## 8. RLS na exkluzivní šablony neumožňuje čtení end_userovi
+
+**Problém:** B4 §1.2 dává čtení exkluzivních šablon (`owner_client_id`
+vyplněné) jen `client_operator` (vlastníkovi) a `platform_admin` — ne
+`end_user`. Když si klient v budoucnu nastaví program s exkluzivní
+šablonou, end_user, co drží jeho voucher, by ji přímým klientským
+dotazem nenačetl (RLS ho odmítne), a obrazovka 03 by potichu spadla na
+`VoucherCard` fallback místo reálného designu — bezpečné chování, ale
+nechtěné.
+
+Objeveno při zapojování reálného renderu šablon do `/app/vouchers/[id]`
+(obrazovka 03). Dnes bez dopadu — jediná existující šablona
+("Mooncher Default") je sdílená (`owner_client_id is null`), tam RLS
+čtení pro `end_user` funguje bez problémů.
+
+**Skutečné řešení:** buď rozšířit RLS politiku o "end_user smí číst
+šablonu, pokud drží voucher pod programem, co ji používá" (stejný vzorec
+jako `programs_select` rozšíření pro `vpc_voucher_programs`), nebo načítat
+šablonu přes Route Handler se service rolí místo přímého klientského
+dotazu.
+
+Odkazy v kódu: `app/app/vouchers/[id]/page.tsx`.
+
+---
+
+*Aktualizováno: obrazovka 03 (detail voucheru) — reálný render šablony, 31. 7. 2026.*

@@ -1,3 +1,5 @@
+import DOMPurify from "dompurify";
+
 export type TokenFieldSchema = {
   type: "color" | "text" | "image" | "icon_picker" | "multiselect";
   default?: string;
@@ -32,6 +34,16 @@ export function defaultTokenValues(schema: TokenSchema): Record<string, string> 
     values[key] = field.default ?? "";
   }
   return values;
+}
+
+// Substituce + sanitizace v jednom kroku — stejná dvouvrstvá ochrana jako
+// v biz-5 editoru (substituteTokens escapuje hodnoty, DOMPurify čistí
+// výsledné HTML). DOMPurify běží jen v prohlížeči, proto guard na window —
+// volající (klientské komponenty v /app, /business) na to musí být
+// připravené vracet prázdný string při SSR/prvním renderu.
+export function renderTemplateHtml(layout: string, values: Record<string, string>): string {
+  if (typeof window === "undefined") return "";
+  return DOMPurify.sanitize(substituteTokens(layout, values));
 }
 
 const VALID_TOKEN_TYPES = ["color", "text", "image", "icon_picker", "multiselect"];
