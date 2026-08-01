@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { MoonMark } from "@/components/MoonMark";
@@ -26,6 +27,7 @@ function SettingsRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [endUser, setEndUser] = useState<EndUser | null | undefined>(undefined);
@@ -97,6 +99,11 @@ export default function SettingsPage() {
 
     setSaveMessage("Uloženo.");
     setEndUser((prev) => (prev ? { ...prev, first_name: firstName, last_name: lastName } : prev));
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push("/app/login");
   }
 
   return (
@@ -231,6 +238,10 @@ export default function SettingsPage() {
                 )}
               </div>
             )}
+
+            <Button variant="ghost" onClick={handleSignOut} className="mt-2">
+              Odhlásit se
+            </Button>
           </>
         )}
       </div>
