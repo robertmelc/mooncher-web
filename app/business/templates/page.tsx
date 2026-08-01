@@ -55,21 +55,20 @@ export default function BusinessTemplatesPage() {
     if (!isOperator) return;
 
     async function loadTemplates() {
-      // Sdílené šablony (owner_client_id is null) — RLS na tohle nezávisí
-      // na chybějícím JWT claimu (ověřeno přímo: anon dotaz je vidí stejně
-      // jako service role), takže jde přímý klientský dotaz.
-      const { data, error: templatesError } = await supabase
-        .from("vpc_voucher_templates")
-        .select("id, name, category, thumbnail_url")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
+      // Service role přes Route Handler — přímý klientský RLS dotaz jako
+      // client_operator tiše selhává (HARDENING.md #1), takže by operátor
+      // viděl jen sdílené šablony, ne svoje vlastní exkluzivní.
+      const res = await fetch("/api/business/templates", {
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
+      const json = await res.json();
 
-      if (templatesError) {
-        setError(templatesError.message);
+      if (!res.ok) {
+        setError(json.error ?? "Načtení se nezdařilo.");
         return;
       }
 
-      setTemplates(data ?? []);
+      setTemplates(json.templates);
     }
 
     loadTemplates();

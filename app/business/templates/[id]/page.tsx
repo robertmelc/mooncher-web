@@ -81,23 +81,23 @@ export default function TemplateEditorPage({ params }: { params: { id: string } 
     if (!isOperator) return;
 
     async function loadTemplate() {
-      // Sdílené šablony — přímý klientský dotaz, RLS na tohle nezávisí
-      // na chybějícím JWT claimu (viz obrazovka biz-4).
-      const { data, error: templateError } = await supabase
-        .from("vpc_voucher_templates")
-        .select("id, name, category, front_layout, token_schema")
-        .eq("id", params.id)
-        .maybeSingle();
+      // Service role přes Route Handler — stejný důvod jako galerie (biz-4),
+      // viz HARDENING.md #1.
+      const res = await fetch(`/api/business/templates/${params.id}`, {
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
+      const json = await res.json();
 
-      if (templateError) {
-        setError(templateError.message);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setTemplate(null);
+        } else {
+          setError(json.error ?? "Načtení se nezdařilo.");
+        }
         return;
       }
-      if (!data) {
-        setTemplate(null);
-        return;
-      }
 
+      const data = json.template;
       setTemplate(data as unknown as TemplateData);
       setTokenValues(defaultTokenValues(data.token_schema as TokenSchema));
     }
