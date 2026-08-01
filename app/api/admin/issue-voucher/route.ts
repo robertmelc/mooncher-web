@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveAdmin } from "@/lib/admin-auth";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { isValidEmail, normalizeEmail } from "@/lib/email";
 import { generateVoucherCode, generateNewVoucherId, placeholderQrSignature } from "@/lib/voucherIssuance";
 
 type ProgramRow = {
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     programId?: string;
     amount?: number;
     recipientPhone?: string;
+    recipientEmail?: string;
     message?: string;
     idempotencyKey?: string;
   };
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Neplatný požadavek." }, { status: 400 });
   }
 
-  const { clientId, programId, amount, recipientPhone, message, idempotencyKey } = body;
+  const { clientId, programId, amount, recipientPhone, recipientEmail, message, idempotencyKey } = body;
 
   if (!clientId || !programId || !idempotencyKey || typeof amount !== "number" || amount <= 0) {
     return NextResponse.json({ ok: false, error: "Neplatné parametry vydání." }, { status: 400 });
@@ -48,6 +50,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Zadejte platné telefonní číslo příjemce." }, { status: 400 });
     }
     phone = normalizePhone(recipientPhone);
+  }
+
+  let email: string | null = null;
+  if (recipientEmail && recipientEmail.trim()) {
+    if (!isValidEmail(recipientEmail)) {
+      return NextResponse.json({ ok: false, error: "Zadejte platný e-mail příjemce." }, { status: 400 });
+    }
+    email = normalizeEmail(recipientEmail);
   }
 
   // Idempotence — druhý pokus se stejným klíčem vrátí id už vytvořeného
@@ -126,10 +136,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: txError?.message ?? "Zápis transakce selhal." }, { status: 500 });
   }
 
+  // requires_auth: true u KAŽDÉHO vouchru z tohohle admin flow — výherce
+  // se musí přihlásit vlastním e-mailem (magic link), aby se voucher
+  // přiřadil k jeho SKUTEČNÉMU end_user účtu (podle auth_user_id), ne podle
+  // telefonu jako u běžné aktivace. Viz app/api/activate/[token]/route.ts.
   const { error: voucherInsertError } = await admin.from("vpc_vouchers").insert({
     id: newVoucherId,
     account_id: null,
     recipient_phone: phone,
+    recipient_email: email,
+    requires_auth: true,
     voucher_program_id: program.id,
     code,
     qr_payload: qrPayload,
@@ -158,6 +174,8 @@ export async function POST(req: NextRequest) {
       amount,
       currency: program.currency,
       recipientPhone: phone,
+      recipientEmail: email,
+      requiresAuth: true,
     },
   });
 

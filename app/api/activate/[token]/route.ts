@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { normalizeEmail } from "@/lib/email";
 import { voucherTypeLabel } from "@/lib/vouchers";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,6 +15,8 @@ type VoucherRow = {
   account_id: string | null;
   issued_to_name: string | null;
   recipient_phone: string | null;
+  recipient_email: string | null;
+  requires_auth: boolean;
   gifted_by_account_id: string | null;
   voucher_program_id: string;
   voucher_program: {
@@ -61,7 +64,8 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, token: 
   const { data, error } = await admin
     .from("vpc_vouchers")
     .select(
-      `id, status, account_id, issued_to_name, recipient_phone, gifted_by_account_id, voucher_program_id,
+      `id, status, account_id, issued_to_name, recipient_phone, recipient_email, requires_auth,
+       gifted_by_account_id, voucher_program_id,
        voucher_program:vpc_voucher_programs (
          name, voucher_type, currency,
          client:vpc_clients ( name )
@@ -104,6 +108,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
       title: program.name,
       subtitle: program.client?.name ?? "",
       issuedToName: voucher.issued_to_name,
+      requiresAuth: voucher.requires_auth,
     },
   });
 }
@@ -125,20 +130,6 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     );
   }
 
-  let body: { phone?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ ok: false, error: "Neplatný požadavek." }, { status: 400 });
-  }
-
-  const rawPhone = body.phone ?? "";
-  if (!isValidPhone(rawPhone)) {
-    await logAttempt(admin, token, "voucher.activation_rejected", { reason: "invalid_phone" });
-    return NextResponse.json({ ok: false, error: "Zadejte platné telefonní číslo." }, { status: 400 });
-  }
-  const phone = normalizePhone(rawPhone);
-
   const { error: fetchError, voucher } = await fetchVoucher(admin, token);
   if (fetchError) {
     return NextResponse.json({ ok: false, error: fetchError }, { status: 500 });
@@ -151,39 +142,103 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     await logAttempt(admin, token, "voucher.activation_rejected", { reason: "already_activated" });
     return NextResponse.json({ ok: false, error: "Voucher už byl aktivován." }, { status: 409 });
   }
-  if (voucher.recipient_phone && normalizePhone(voucher.recipient_phone) !== phone) {
-    await logAttempt(admin, token, "voucher.activation_rejected", { reason: "phone_mismatch" });
-    return NextResponse.json(
-      { ok: false, error: "Tento voucher je určen jinému telefonnímu číslu." },
-      { status: 403 }
-    );
-  }
 
   const program = voucher.voucher_program;
+  let endUserId: string;
 
-  // Najít nebo založit end_usera podle telefonu
-  const { data: existingEndUser, error: endUserSelectError } = await admin
-    .from("vpc_end_users")
-    .select("id")
-    .eq("phone", phone)
-    .maybeSingle();
+  // requires_auth se čte VŽDY z DB řádku, nikdy z requestu — jinak by šlo
+  // vynucené přihlášení obejít tím, že klient prostě nepošle Authorization
+  // header a pošle phone jako u běžného flow.
+  if (voucher.requires_auth) {
+    const accessToken = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    if (!accessToken) {
+      await logAttempt(admin, token, "voucher.activation_rejected", { reason: "auth_required" });
+      return NextResponse.json(
+        { ok: false, error: "Pro aktivaci tohoto vouchru se musíte přihlásit.", requiresAuth: true },
+        { status: 401 }
+      );
+    }
 
-  if (endUserSelectError) {
-    return NextResponse.json({ ok: false, error: endUserSelectError.message }, { status: 500 });
-  }
+    const { data: userData, error: userError } = await admin.auth.getUser(accessToken);
+    if (userError || !userData.user) {
+      await logAttempt(admin, token, "voucher.activation_rejected", { reason: "auth_invalid" });
+      return NextResponse.json(
+        { ok: false, error: "Přihlášení vypršelo, přihlaste se prosím znovu.", requiresAuth: true },
+        { status: 401 }
+      );
+    }
 
-  let endUserId = existingEndUser?.id as string | undefined;
-  if (!endUserId) {
-    const { data: newEndUser, error: endUserInsertError } = await admin
+    const userEmail = userData.user.email ?? "";
+    if (voucher.recipient_email && normalizeEmail(voucher.recipient_email) !== normalizeEmail(userEmail)) {
+      await logAttempt(admin, token, "voucher.activation_rejected", { reason: "email_mismatch" });
+      return NextResponse.json({ ok: false, error: "Tento voucher je určen jinému e-mailu." }, { status: 403 });
+    }
+
+    // Najít nebo založit end_usera podle přihlášeného auth_user_id — jeden
+    // atomický upsert (UNIQUE (auth_user_id) + ON CONFLICT), ne select+insert
+    // jako u telefonu níž, protože tady na atomicitě skutečně záleží: tohle
+    // je první místo v appce, co auth_user_id vůbec zapisuje (HARDENING.md #9).
+    const { data: endUser, error: endUserUpsertError } = await admin
       .from("vpc_end_users")
-      .insert({ phone })
+      .upsert({ auth_user_id: userData.user.id, email: userEmail || null }, { onConflict: "auth_user_id" })
       .select("id")
       .single();
 
-    if (endUserInsertError) {
-      return NextResponse.json({ ok: false, error: endUserInsertError.message }, { status: 500 });
+    if (endUserUpsertError || !endUser) {
+      return NextResponse.json(
+        { ok: false, error: endUserUpsertError?.message ?? "Nepodařilo se najít účet." },
+        { status: 500 }
+      );
     }
-    endUserId = newEndUser.id;
+    endUserId = endUser.id;
+  } else {
+    let body: { phone?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ ok: false, error: "Neplatný požadavek." }, { status: 400 });
+    }
+
+    const rawPhone = body.phone ?? "";
+    if (!isValidPhone(rawPhone)) {
+      await logAttempt(admin, token, "voucher.activation_rejected", { reason: "invalid_phone" });
+      return NextResponse.json({ ok: false, error: "Zadejte platné telefonní číslo." }, { status: 400 });
+    }
+    const phone = normalizePhone(rawPhone);
+
+    if (voucher.recipient_phone && normalizePhone(voucher.recipient_phone) !== phone) {
+      await logAttempt(admin, token, "voucher.activation_rejected", { reason: "phone_mismatch" });
+      return NextResponse.json(
+        { ok: false, error: "Tento voucher je určen jinému telefonnímu číslu." },
+        { status: 403 }
+      );
+    }
+
+    // Najít nebo založit end_usera podle telefonu
+    const { data: existingEndUser, error: endUserSelectError } = await admin
+      .from("vpc_end_users")
+      .select("id")
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (endUserSelectError) {
+      return NextResponse.json({ ok: false, error: endUserSelectError.message }, { status: 500 });
+    }
+
+    if (existingEndUser) {
+      endUserId = existingEndUser.id;
+    } else {
+      const { data: newEndUser, error: endUserInsertError } = await admin
+        .from("vpc_end_users")
+        .insert({ phone })
+        .select("id")
+        .single();
+
+      if (endUserInsertError) {
+        return NextResponse.json({ ok: false, error: endUserInsertError.message }, { status: 500 });
+      }
+      endUserId = newEndUser.id;
+    }
   }
 
   // Najít nebo založit účet pro (end_user, voucher_program)
@@ -266,7 +321,11 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     await logAttempt(admin, token, "voucher.gift_credit_missing", {});
   }
 
-  await logAttempt(admin, token, "voucher.activated", { account_id: accountId, status: "activated" });
+  await logAttempt(admin, token, "voucher.activated", {
+    account_id: accountId,
+    status: "activated",
+    ...(voucher.requires_auth ? { via: "auth_gated", matched_by: "auth_user_id" } : {}),
+  });
 
   return NextResponse.json({ ok: true });
 }

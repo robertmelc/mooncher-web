@@ -22,6 +22,7 @@ function IssueVoucherForm() {
   const [programId, setProgramId] = useState("");
   const [amount, setAmount] = useState("500");
   const [recipientPhone, setRecipientPhone] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [message, setMessage] = useState(searchParams.get("message") ?? "");
 
   const [submitting, setSubmitting] = useState(false);
@@ -108,6 +109,7 @@ function IssueVoucherForm() {
         programId,
         amount: numericAmount,
         recipientPhone: recipientPhone || undefined,
+        recipientEmail: recipientEmail || undefined,
         message: message || undefined,
         idempotencyKey: crypto.randomUUID(),
       }),
@@ -143,6 +145,7 @@ function IssueVoucherForm() {
     setResult(null);
     setAmount("500");
     setRecipientPhone("");
+    setRecipientEmail("");
     setMessage("");
   }
 
@@ -238,6 +241,19 @@ function IssueVoucherForm() {
             placeholder="+420 xxx xxx xxx"
             className="rounded-sm border border-line-strong bg-panel px-3 py-2 text-sm text-ink"
           />
+
+          <label className="mt-1 text-[11.5px] text-ink-faint">E-mail příjemce (nepovinné)</label>
+          <input
+            type="email"
+            value={recipientEmail}
+            onChange={(e) => setRecipientEmail(e.target.value)}
+            placeholder="vyherce@email.cz"
+            className="rounded-sm border border-line-strong bg-panel px-3 py-2 text-sm text-ink"
+          />
+          <p className="text-[10.5px] text-ink-faint">
+            Voucher se aktivuje jen po přihlášení výherce (magic link) — pošlete mu odkaz na tenhle e-mail sami,
+            appka ho neodesílá automaticky.
+          </p>
 
           <label className="mt-1 text-[11.5px] text-ink-faint">Zpráva</label>
           <textarea

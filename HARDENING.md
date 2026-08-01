@@ -216,4 +216,42 @@ Odkazy v kódu: `app/app/vouchers/[id]/page.tsx`.
 
 ---
 
-*Aktualizováno: obrazovka 03 (detail voucheru) — reálný render šablony, 31. 7. 2026.*
+## 9. `vpc_end_users.auth_user_id` se nikde nezapisuje
+
+**Problém:** Sloupec existuje a všechny end-user cesty podle něj *čtou*
+(`app/api/vouchers/gift/route.ts`, `app/api/vouchers/transfer/route.ts`,
+`app/app/page.tsx`, `app/app/settings/page.tsx`, `app/app/vouchers/[id]/*`,
+`app/app/vouchers/transfer/page.tsx` — všechny `.eq("auth_user_id", ...)`),
+ale nikde v appce se nenašel jediný `INSERT`/`UPDATE`, který by ho
+nastavil. Dosavadní jediné místo, co `vpc_end_users` zakládá
+(`app/api/activate/[token]/route.ts`, telefonní aktivace bez přihlášení),
+píše výhradně podle `phone` — `auth_user_id` zůstává `null`. Důsledek: ani
+jeden end_user založený běžnou aktivací dnes není přes žádnou z výše
+uvedených cest dohledatelný, pokud se s ním někdo přihlásí přes magic
+link — `/app` mu ukáže prázdný seznam vouchrů, ne chybu.
+
+Objeveno při návrhu aktivace pro admin-vydané vouchery (přihlášením
+gejtovaná varianta, `/admin/issue-voucher` → `/app/activate/[token]`,
+2. 8. 2026) — tahle nová větev je **první místo v appce, které
+`auth_user_id` skutečně zapisuje** (find-or-create `vpc_end_users` podle
+přihlášeného `auth_user_id` místo podle telefonu).
+
+**Proč to (zatím) nejde obejít plošně:** propojení účtu podle e-mailu při
+prvním přihlášení je přesně to, co má dělat Auth Hook z bodu [#1](#1-auth-hook-pro-client_operator-jwt-claims)
+(tam pro `client_operator`/`app_metadata`, tady analogicky pro
+`end_user`/`vpc_end_users.auth_user_id`) — než ten vznikne, jakékoli
+řešení tady je nutně bodové, ne systémové.
+
+**Skutečné řešení:** až se bude řešit Auth Hook z bodu #1, ověřit soulad
+s tímhle bodovým zápisem — ideálně stejný mechanismus (hook při
+přihlášení najde/založí `vpc_end_users` podle e-mailu a nastaví
+`auth_user_id`), který by pak zpětně obsloužil i telefonem založené
+účty, ne jen ty vzniklé přes tuhle novou aktivaci.
+
+Odkazy v kódu: `app/api/activate/[token]/route.ts` (nový branch pro
+`requires_auth`), `lib/business-auth.ts` (analogický vzor pro
+`client_operator`).
+
+---
+
+*Aktualizováno: aktivace admin-vydaných vouchrů přihlášením (bod 9), 2. 8. 2026.*

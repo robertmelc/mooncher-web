@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase/client";
 import { MoonMark } from "@/components/MoonMark";
 import { Button } from "@/components/Button";
 
@@ -9,10 +12,14 @@ type VoucherPreview = {
   title: string;
   subtitle: string;
   issuedToName: string | null;
+  requiresAuth: boolean;
 };
 
 export default function ActivateVoucherPage({ params }: { params: { token: string } }) {
+  const router = useRouter();
   const [preview, setPreview] = useState<VoucherPreview | null | undefined>(undefined);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -25,6 +32,21 @@ export default function ActivateVoucherPage({ params }: { params: { token: strin
     }
     loadPreview();
   }, [params.token]);
+
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,6 +61,25 @@ export default function ActivateVoucherPage({ params }: { params: { token: strin
     const json = await res.json();
     setSubmitting(false);
     setResult({ ok: json.ok, message: json.ok ? "Voucher byl aktivován." : json.error });
+  }
+
+  async function handleAuthActivate() {
+    if (!session) return;
+    setSubmitting(true);
+    setResult(null);
+
+    const res = await fetch(`/api/activate/${params.token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: "{}",
+    });
+    const json = await res.json();
+    setSubmitting(false);
+    setResult({ ok: json.ok, message: json.ok ? "Voucher byl aktivován." : json.error });
+  }
+
+  function handleLoginRedirect() {
+    router.push(`/app/login?next=${encodeURIComponent(`/app/activate/${params.token}`)}`);
   }
 
   return (
@@ -62,6 +103,23 @@ export default function ActivateVoucherPage({ params }: { params: { token: strin
 
             {result?.ok ? (
               <p className="mt-4 text-sm text-positive">{result.message}</p>
+            ) : preview.requiresAuth ? (
+              authLoading ? (
+                <p className="mt-4 font-mono text-sm text-ink-dim">Načítám…</p>
+              ) : !session ? (
+                <div className="mt-4 flex w-full flex-col gap-3">
+                  <p className="text-[13px] text-ink-dim">Tenhle voucher vyžaduje přihlášení k vašemu účtu.</p>
+                  <Button onClick={handleLoginRedirect}>Přihlásit se</Button>
+                </div>
+              ) : (
+                <div className="mt-4 flex w-full flex-col gap-3">
+                  <p className="text-[11.5px] text-ink-faint">Přihlášeno jako {session.user.email}</p>
+                  <Button onClick={handleAuthActivate} disabled={submitting}>
+                    {submitting ? "Aktivuji…" : "Aktivovat voucher"}
+                  </Button>
+                  {result && !result.ok && <p className="text-[11.5px] text-danger">{result.message}</p>}
+                </div>
+              )
             ) : (
               <form onSubmit={handleSubmit} className="mt-4 flex w-full flex-col gap-3">
                 <input
