@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { normalizeEmail } from "@/lib/email";
-import { voucherTypeLabel } from "@/lib/vouchers";
+import { voucherEyebrow } from "@/lib/vouchers";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -18,6 +18,7 @@ type VoucherRow = {
   recipient_phone: string | null;
   recipient_email: string | null;
   requires_auth: boolean;
+  is_admin_issued: boolean;
   gifted_by_account_id: string | null;
   voucher_program_id: string;
   voucher_program: {
@@ -66,7 +67,7 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, token: 
     .from("vpc_vouchers")
     .select(
       `id, status, account_id, issued_to_name, message, recipient_phone, recipient_email, requires_auth,
-       gifted_by_account_id, voucher_program_id,
+       is_admin_issued, gifted_by_account_id, voucher_program_id,
        voucher_program:vpc_voucher_programs (
          name, voucher_type, currency,
          client:vpc_clients ( name )
@@ -105,7 +106,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   return NextResponse.json({
     ok: true,
     voucher: {
-      eyebrow: voucherTypeLabel(program.voucher_type),
+      eyebrow: voucherEyebrow(program.voucher_type, voucher.is_admin_issued),
       title: program.name,
       subtitle: program.client?.name ?? "",
       issuedToName: voucher.issued_to_name,

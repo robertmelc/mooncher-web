@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 import { MoonMark } from "@/components/MoonMark";
 import { VoucherCard } from "@/components/VoucherCard";
 import { formatCurrency } from "@/lib/format";
-import { voucherStatusLabel, voucherTypeLabel } from "@/lib/vouchers";
+import { voucherStatusLabel, voucherEyebrow } from "@/lib/vouchers";
 
 type VoucherWithProgram = {
   id: string;
@@ -15,6 +15,7 @@ type VoucherWithProgram = {
   status: string;
   account_id: string;
   message: string | null;
+  is_admin_issued: boolean;
   voucher_program: {
     name: string;
     voucher_type: string;
@@ -99,7 +100,7 @@ export default function EndUserHome() {
         supabase
           .from("vpc_vouchers")
           .select(
-            `id, code, status, account_id, message,
+            `id, code, status, account_id, message, is_admin_issued,
              voucher_program:vpc_voucher_programs (
                name, voucher_type, currency, design_config,
                client:vpc_clients ( name )
@@ -139,7 +140,7 @@ export default function EndUserHome() {
           const balance = latestBalanceByAccount.get(v.account_id) ?? 0;
           return {
             id: v.id,
-            eyebrow: voucherTypeLabel(program.voucher_type),
+            eyebrow: voucherEyebrow(program.voucher_type, v.is_admin_issued),
             title: program.name,
             subtitle: program.client?.name ?? "",
             amount: formatCurrency(balance, program.currency),

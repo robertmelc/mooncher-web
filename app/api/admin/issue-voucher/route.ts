@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
     recipient_phone: phone,
     recipient_email: email,
     requires_auth: true,
+    is_admin_issued: true,
     voucher_program_id: program.id,
     code,
     qr_payload: qrPayload,

@@ -6,7 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { VoucherCard } from "@/components/VoucherCard";
 import { formatCurrency } from "@/lib/format";
-import { voucherStatusLabel, voucherTypeLabel } from "@/lib/vouchers";
+import { voucherStatusLabel, voucherEyebrow } from "@/lib/vouchers";
 import {
   renderTemplateHtml,
   defaultTokenValues,
@@ -20,6 +20,7 @@ type VoucherWithProgram = {
   account_id: string;
   valid_until: string | null;
   message: string | null;
+  is_admin_issued: boolean;
   voucher_program: {
     name: string;
     voucher_type: string;
@@ -109,7 +110,7 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
       const { data: voucherRow, error: voucherError } = await supabase
         .from("vpc_vouchers")
         .select(
-          `id, code, status, account_id, valid_until, message,
+          `id, code, status, account_id, valid_until, message, is_admin_issued,
            voucher_program:vpc_voucher_programs (
              name, voucher_type, currency, design_config,
              client:vpc_clients ( name )
@@ -149,7 +150,7 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
 
       setVoucher({
         id: row.id,
-        eyebrow: voucherTypeLabel(program.voucher_type),
+        eyebrow: voucherEyebrow(program.voucher_type, row.is_admin_issued),
         title: program.name,
         subtitle: program.client?.name ?? "",
         amount: formatCurrency(balance, program.currency),
