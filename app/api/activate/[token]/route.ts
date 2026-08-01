@@ -235,35 +235,35 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     return NextResponse.json({ ok: false, error: "Voucher už byl aktivován." }, { status: 409 });
   }
 
-  // Darovaný voucher (obrazovka app-9): účet při vydání ještě neexistoval
-  // (vpc_ledger_entries.account_id je NOT NULL), takže ledger credit z
-  // vpc_transactions typu 'load' vzniklé při darování čeká přesně na
-  // tenhle okamžik — dohledaný přes metadata.gift_voucher_id (stejný
-  // vzorec jako from/to_account_id u transferu). Běží to jen jednou za
-  // voucher, protože se sem dostaneme jen při vítězství atomického
-  // přechodu výše. Pokud transakce chybí (neměla by), aktivace i tak
-  // uspěje — účet už je platně založený — jen se to zaloguje k dohledání.
-  if (voucher.gifted_by_account_id) {
-    const { data: giftTx } = await admin
-      .from("vpc_transactions")
-      .select("id, gross_amount")
-      .eq("metadata->>gift_voucher_id", token)
-      .maybeSingle();
+  // Účet při vydání ještě neexistoval (vpc_ledger_entries.account_id je
+  // NOT NULL), takže ledger credit z vpc_transactions typu 'load' čeká
+  // přesně na tenhle okamžik. Dva možné zdroje takové transakce dnes:
+  // darování (app-9, metadata.gift_voucher_id) a admin vydání voucheru
+  // (metadata.admin_issued_voucher_id) — KAŽDÝ voucher, co se sem dostane,
+  // je vždy issued+bez účtu, takže hledáme oba klíče bez podmiňování na
+  // gifted_by_account_id (ten u admin vydání není vyplněný). Běží to jen
+  // jednou za voucher, protože se sem dostaneme jen při vítězství
+  // atomického přechodu výše. Pokud transakce chybí (neměla by), aktivace
+  // i tak uspěje — účet už je platně založený — jen se to zaloguje k dohledání.
+  const { data: creditTx } = await admin
+    .from("vpc_transactions")
+    .select("id, gross_amount")
+    .or(`metadata->>gift_voucher_id.eq.${token},metadata->>admin_issued_voucher_id.eq.${token}`)
+    .maybeSingle();
 
-    if (giftTx) {
-      const { error: creditError } = await admin.from("vpc_ledger_entries").insert({
-        account_id: accountId,
-        transaction_id: giftTx.id,
-        direction: "credit",
-        amount: giftTx.gross_amount,
-        balance_after: giftTx.gross_amount,
-      });
-      if (creditError) {
-        await logAttempt(admin, token, "voucher.gift_credit_failed", { error: creditError.message });
-      }
-    } else {
-      await logAttempt(admin, token, "voucher.gift_credit_missing", {});
+  if (creditTx) {
+    const { error: creditError } = await admin.from("vpc_ledger_entries").insert({
+      account_id: accountId,
+      transaction_id: creditTx.id,
+      direction: "credit",
+      amount: creditTx.gross_amount,
+      balance_after: creditTx.gross_amount,
+    });
+    if (creditError) {
+      await logAttempt(admin, token, "voucher.gift_credit_failed", { error: creditError.message });
     }
+  } else {
+    await logAttempt(admin, token, "voucher.gift_credit_missing", {});
   }
 
   await logAttempt(admin, token, "voucher.activated", { account_id: accountId, status: "activated" });

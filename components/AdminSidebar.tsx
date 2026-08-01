@@ -9,6 +9,7 @@ const NAV_ITEMS: { label: string; href: string }[] = [
   { label: "Compliance", href: "/admin/compliance" },
   { label: "Šablony", href: "/admin/templates" },
   { label: "Losování", href: "/admin/draw" },
+  { label: "Vydat voucher", href: "/admin/issue-voucher" },
   { label: "Audit log", href: "/admin/audit-log" },
 ];
 

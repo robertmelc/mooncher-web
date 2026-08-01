@@ -211,6 +211,7 @@ export default function AdminDrawPage() {
                       <th className="py-2 pr-3 font-mono font-semibold">Seed</th>
                       <th className="py-2 pr-3 font-mono font-semibold">Hash</th>
                       <th className="py-2 pr-3 font-mono font-semibold">Admin</th>
+                      <th className="py-2 pr-3 font-mono font-semibold">Akce</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -230,6 +231,14 @@ export default function AdminDrawPage() {
                         </td>
                         <td className="py-2 pr-3 whitespace-nowrap text-[10.5px] text-ink-faint">
                           {d.created_by_email}
+                        </td>
+                        <td className="py-2 pr-3 whitespace-nowrap">
+                          <Link
+                            href={`/admin/issue-voucher?message=${encodeURIComponent(d.prize_description)}`}
+                            className="text-[10.5px] text-teal underline"
+                          >
+                            Vydat výherci
+                          </Link>
                         </td>
                       </tr>
                     ))}
