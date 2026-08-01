@@ -21,6 +21,29 @@ při vytvoření session vloží `client_id` + `role` do `app_metadata` podle
 shody e-mailu. Pak by šly Route Handlery nahradit přímými klientskými
 dotazy chráněnými RLS, jak bylo v B4 navrženo.
 
+**Konkrétní potvrzený dopad (obrazovka 03, oprava `templates_select`,
+1. 8. 2026):** `vpc_is_client_operator_for(client_id)` volá
+`vpc_current_role()`/`vpc_current_client_id()` — obě čtou jen JWT claim,
+co nikdy nevzniká. `vpc_current_role()` má navíc `coalesce` fallback na
+`'end_user'`, takže funkce nehlásí chybu ani `null`, ale **potichu se
+tváří, že přihlášený `client_operator` je ve skutečnosti `end_user`**.
+
+Ověřeno naostro: reálný operátor Golden Blot (vlastník ve
+`vpc_client_users`) nedokázal přímým RLS dotazem (anon klíč + jeho JWT,
+ne přes appku) přečíst vlastní exkluzivní šablonu — `client_operator`
+větev `templates_select` ho nepoznala. Stejná funkce se stejnými claims
+je použitá i v `programs_select` a všude jinde, kde se `client_operator`
+role v RLS politice objevuje (`vpc_client_users`, `vpc_voucher_programs`,
+`vpc_accounts`, `vpc_ledger_entries`, `vpc_transactions`, `vpc_vouchers`)
+— je tedy **stejně rozbitá všude**, ne jen na šablonách.
+
+**Dnes appku nezasahuje**, protože veškerý `client_operator` přístup jde
+výhradně přes Route Handlery se service rolí (bod výše) — přímý klientský
+dotaz jako `client_operator` se v appce nikde nepoužívá. Je to ale past
+pro budoucí kód: jakýkoli nový přímý RLS dotaz "jako client_operator" bude
+tiše fungovat jako by byl `end_user` (uvidí míň, nebo jiná data, ne chybu),
+dokud Auth Hook nevznikne. Skutečné řešení je stejné jako výše.
+
 Odkazy v kódu: `lib/business-auth.ts` (hlavní komentář).
 
 ---
