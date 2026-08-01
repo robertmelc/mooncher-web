@@ -32,6 +32,7 @@ type VoucherCardData = {
   code: string;
   status: string;
   accentColor?: string;
+  logoUrl?: string;
 };
 
 const ACTIVE_STATUSES = ["issued", "activated", "partially_used"];
@@ -143,6 +144,7 @@ export default function EndUserHome() {
             code: v.code,
             status: voucherStatusLabel(v.status),
             accentColor: program.design_config?.tokens?.brand_color,
+            logoUrl: program.design_config?.tokens?.logo || undefined,
           };
         });
 

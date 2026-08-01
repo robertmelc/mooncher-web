@@ -1,3 +1,5 @@
+import { MoonMark } from "@/components/MoonMark";
+
 type VoucherCardProps = {
   eyebrow: string;
   title: string;
@@ -12,6 +14,11 @@ type VoucherCardProps = {
   // jen aplikovaný na VoucherCard místo syrového HTML. Bez tohohle propu
   // karta vypadá jako dřív (natvrdo teal).
   accentColor?: string;
+  // design_config.tokens.logo — chybí-li, vykreslí se MoonMark (vlastní
+  // branding), ne prázdné místo. Platí na všech místech, co VoucherCard
+  // používají (list, detail fallback, load, gift), ne jen tam, kde se
+  // logoUrl vyplňuje.
+  logoUrl?: string;
 };
 
 export function VoucherCard({
@@ -24,6 +31,7 @@ export function VoucherCard({
   flipped = false,
   validUntil,
   accentColor,
+  logoUrl,
 }: VoucherCardProps) {
   const cardStyle = accentColor
     ? {
@@ -69,7 +77,14 @@ export function VoucherCard({
           </div>
         </div>
       ) : (
-        <div className="relative z-10 min-w-0 flex-1 p-5">
+        <div className="relative z-10 min-w-0 flex-1 p-5 pr-[76px]">
+          <div className="absolute right-5 top-1/2 -translate-y-1/2">
+            {logoUrl ? (
+              <img src={logoUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />
+            ) : (
+              <MoonMark size={48} />
+            )}
+          </div>
           <div className="flex items-center justify-between gap-2">
             <div
               className={`font-mono text-[10px] uppercase tracking-wider ${accentColor ? "" : "text-teal"}`}
