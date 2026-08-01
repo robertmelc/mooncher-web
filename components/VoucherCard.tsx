@@ -19,6 +19,10 @@ type VoucherCardProps = {
   // používají (list, detail fallback, load, gift), ne jen tam, kde se
   // logoUrl vyplňuje.
   logoUrl?: string;
+  // Jen indikátor přítomnosti (ne text) — samotná zpráva je často celá věta
+  // a na kompaktní kartě by se nevešla čitelně. Plný text se zobrazuje až
+  // na detailu vouchru a na aktivačním náhledu, mimo tuhle komponentu.
+  hasMessage?: boolean;
 };
 
 export function VoucherCard({
@@ -32,6 +36,7 @@ export function VoucherCard({
   validUntil,
   accentColor,
   logoUrl,
+  hasMessage = false,
 }: VoucherCardProps) {
   const cardStyle = accentColor
     ? {
@@ -92,7 +97,14 @@ export function VoucherCard({
             >
               {eyebrow}
             </div>
-            <span className="badge">{status}</span>
+            <div className="flex items-center gap-1.5">
+              {hasMessage && (
+                <span className="text-[11px] text-ink-faint" title="Voucher obsahuje zprávu" aria-hidden="true">
+                  ✉
+                </span>
+              )}
+              <span className="badge">{status}</span>
+            </div>
           </div>
           <div className="mt-1 font-display text-xl font-extrabold tracking-tight">{title}</div>
           <div className="mt-0.5 text-[11.5px] text-ink-dim">{subtitle}</div>

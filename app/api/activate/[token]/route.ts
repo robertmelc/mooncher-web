@@ -14,6 +14,7 @@ type VoucherRow = {
   status: string;
   account_id: string | null;
   issued_to_name: string | null;
+  message: string | null;
   recipient_phone: string | null;
   recipient_email: string | null;
   requires_auth: boolean;
@@ -64,7 +65,7 @@ async function fetchVoucher(admin: ReturnType<typeof createAdminClient>, token: 
   const { data, error } = await admin
     .from("vpc_vouchers")
     .select(
-      `id, status, account_id, issued_to_name, recipient_phone, recipient_email, requires_auth,
+      `id, status, account_id, issued_to_name, message, recipient_phone, recipient_email, requires_auth,
        gifted_by_account_id, voucher_program_id,
        voucher_program:vpc_voucher_programs (
          name, voucher_type, currency,
@@ -108,6 +109,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
       title: program.name,
       subtitle: program.client?.name ?? "",
       issuedToName: voucher.issued_to_name,
+      message: voucher.message,
       requiresAuth: voucher.requires_auth,
     },
   });
@@ -307,12 +309,25 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     .maybeSingle();
 
   if (creditTx) {
+    // Zůstatek PŘED touhle kreditací nemusí být 0 — účet mohl vzniknout dřív
+    // a už mít historii (druhý a další dar/admin-voucher na stejný účet).
+    // balance_after musí navazovat na poslední skutečný zůstatek, ne jen na
+    // výši týhle jedné transakce (viz latestBalance() v transfer/route.ts,
+    // stejný vzorec).
+    const { data: priorEntries } = await admin
+      .from("vpc_ledger_entries")
+      .select("balance_after")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const priorBalance = priorEntries?.[0] ? Number(priorEntries[0].balance_after) : 0;
+
     const { error: creditError } = await admin.from("vpc_ledger_entries").insert({
       account_id: accountId,
       transaction_id: creditTx.id,
       direction: "credit",
       amount: creditTx.gross_amount,
-      balance_after: creditTx.gross_amount,
+      balance_after: priorBalance + Number(creditTx.gross_amount),
     });
     if (creditError) {
       await logAttempt(admin, token, "voucher.gift_credit_failed", { error: creditError.message });

@@ -14,6 +14,7 @@ type VoucherWithProgram = {
   code: string;
   status: string;
   account_id: string;
+  message: string | null;
   voucher_program: {
     name: string;
     voucher_type: string;
@@ -33,6 +34,7 @@ type VoucherCardData = {
   status: string;
   accentColor?: string;
   logoUrl?: string;
+  hasMessage?: boolean;
 };
 
 const ACTIVE_STATUSES = ["issued", "activated", "partially_used"];
@@ -97,7 +99,7 @@ export default function EndUserHome() {
         supabase
           .from("vpc_vouchers")
           .select(
-            `id, code, status, account_id,
+            `id, code, status, account_id, message,
              voucher_program:vpc_voucher_programs (
                name, voucher_type, currency, design_config,
                client:vpc_clients ( name )
@@ -145,6 +147,7 @@ export default function EndUserHome() {
             status: voucherStatusLabel(v.status),
             accentColor: program.design_config?.tokens?.brand_color,
             logoUrl: program.design_config?.tokens?.logo || undefined,
+            hasMessage: Boolean(v.message),
           };
         });
 

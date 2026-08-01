@@ -19,6 +19,7 @@ type VoucherWithProgram = {
   status: string;
   account_id: string;
   valid_until: string | null;
+  message: string | null;
   voucher_program: {
     name: string;
     voucher_type: string;
@@ -37,6 +38,7 @@ type VoucherDetail = {
   code: string;
   status: string;
   validUntil?: string;
+  message?: string;
 };
 
 type TemplateData = {
@@ -107,7 +109,7 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
       const { data: voucherRow, error: voucherError } = await supabase
         .from("vpc_vouchers")
         .select(
-          `id, code, status, account_id, valid_until,
+          `id, code, status, account_id, valid_until, message,
            voucher_program:vpc_voucher_programs (
              name, voucher_type, currency, design_config,
              client:vpc_clients ( name )
@@ -156,6 +158,7 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
         validUntil: row.valid_until
           ? new Date(row.valid_until).toLocaleDateString("cs-CZ")
           : undefined,
+        message: row.message ?? undefined,
       });
 
       // Reálná šablona jen na detailu (03) — viz konverzace k render logice.
@@ -240,6 +243,12 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
             <div className="flex justify-center">
               <span className="badge">{voucher.status}</span>
             </div>
+
+            {voucher.message && (
+              <p className="rounded-sm border border-dashed border-line-strong px-3.5 py-2.5 text-center text-[12.5px] italic text-ink-dim">
+                „{voucher.message}“
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <button

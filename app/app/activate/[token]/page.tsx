@@ -12,6 +12,7 @@ type VoucherPreview = {
   title: string;
   subtitle: string;
   issuedToName: string | null;
+  message: string | null;
   requiresAuth: boolean;
 };
 
@@ -100,6 +101,12 @@ export default function ActivateVoucherPage({ params }: { params: { token: strin
               {preview.title} · {preview.subtitle}
               {preview.issuedToName ? ` · pro ${preview.issuedToName}` : ""}
             </p>
+
+            {preview.message && (
+              <p className="w-full rounded-sm border border-dashed border-line-strong px-3.5 py-2.5 text-center text-[12.5px] italic text-ink-dim">
+                „{preview.message}“
+              </p>
+            )}
 
             {result?.ok ? (
               <p className="mt-4 text-sm text-positive">{result.message}</p>
