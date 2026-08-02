@@ -29,6 +29,13 @@ export function AdminSidebar() {
           {item.label}
         </Link>
       ))}
+      {/* Odchod ze sekce, ne další stránka uvnitř ní — proto oddělené
+          předělem a tlumenější barvou, ne v NAV_ITEMS. Bez podmínky role:
+          i identita bez vpc_end_users řádku dostane na /app bezpečný
+          prázdný stav ("Zatím tu nemáte žádný voucher."), ne chybu. */}
+      <Link href="/app" className="mt-2 border-t border-line px-3 pt-3 text-[13px] font-semibold text-ink-faint">
+        ‹ Zpět na můj účet
+      </Link>
     </nav>
   );
 }
