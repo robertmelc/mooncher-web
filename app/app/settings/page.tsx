@@ -17,6 +17,8 @@ type EndUser = {
   verification_tier: string;
 };
 
+type AppAccess = { isAdmin: boolean; isClientOperator: boolean; clientName: string | null };
+
 function SettingsRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between border-b border-line py-3">
@@ -41,6 +43,8 @@ export default function SettingsPage() {
   const [eclipseMessage, setEclipseMessage] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closeMessage, setCloseMessage] = useState<string | null>(null);
+
+  const [access, setAccess] = useState<AppAccess | null>(null);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -79,6 +83,26 @@ export default function SettingsPage() {
 
     loadEndUser();
   }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    async function loadAccess() {
+      const res = await fetch("/api/app/access", {
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setAccess({ isAdmin: json.isAdmin, isClientOperator: json.isClientOperator, clientName: json.clientName });
+      }
+    }
+
+    loadAccess();
+    // session je tu záměrně mimo dependency array — celý objekt mění
+    // referenci i při neškodném obnovení tokenu (HARDENING.md #4).
+    // session?.user?.id je stabilní přes token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -235,6 +259,31 @@ export default function SettingsPage() {
                       Potvrdit žádost
                     </Button>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Přepínač rozhraní — vidí jen identita, co danou roli skutečně má
+                (viz app/api/app/access/route.ts). Pro běžného end_usera se
+                tenhle blok vůbec nevykreslí. */}
+            {access && (access.isAdmin || access.isClientOperator) && (
+              <div className="mt-4 flex flex-col gap-2">
+                <span className="text-[11.5px] text-ink-faint">Další rozhraní</span>
+                {access.isClientOperator && (
+                  <Link
+                    href="/business"
+                    className="rounded-sm border border-dashed border-line-strong px-3.5 py-2.5 text-center text-[13px] font-medium text-ink-dim"
+                  >
+                    Přepnout na Business{access.clientName ? ` (${access.clientName})` : ""}
+                  </Link>
+                )}
+                {access.isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="rounded-sm border border-dashed border-line-strong px-3.5 py-2.5 text-center text-[13px] font-medium text-ink-dim"
+                  >
+                    Přepnout na Admin
+                  </Link>
                 )}
               </div>
             )}

@@ -15,6 +15,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type AdminResult = { ok: true; email: string } | { ok: false; status: number; error: string };
 
+// Čistá kontrola bez DB/audit vedlejších efektů — pro pasivní "má tenhle
+// e-mail admin roli?" dotazy (např. přepínač rozhraní v Nastavení), kde by
+// audit-log zápis na zamítnutí (viz níže) byl nesmyslný šum při každém
+// otevření stránky běžným uživatelem. Ostré volání admin API pořád jde přes
+// resolveAdmin(), který auditování zachovává.
+export function isPlatformAdminEmail(email: string): boolean {
+  const adminEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email.toLowerCase());
+}
+
 export async function resolveAdmin(
   admin: ReturnType<typeof createAdminClient>,
   accessToken: string
@@ -28,12 +41,7 @@ export async function resolveAdmin(
     return { ok: false, status: 401, error: "Neplatná session." };
   }
 
-  const adminEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (!adminEmails.includes(userData.user.email.toLowerCase())) {
+  if (!isPlatformAdminEmail(userData.user.email)) {
     // Zamítnutý pokus přihlášeného (ale ne-admin) uživatele o admin API —
     // logováno centrálně tady, ať to platí pro každý budoucí /api/admin/*
     // endpoint automaticky, ne jen pro cashflow.
