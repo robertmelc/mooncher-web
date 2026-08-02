@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { normalizeEmail } from "@/lib/email";
 import { voucherEyebrow } from "@/lib/vouchers";
+import { resolveOrCreateAccount } from "@/lib/accounts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -245,73 +246,20 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     }
   }
 
-  // Účet pro (end_user, voucher_program) — u 'pooled' programů (nabíjecí/
-  // věrnostní) sdílí všechny vouchery stejného člověka na stejném programu
-  // jeden rostoucí zůstatek, proto se existující účet hledá a znovupoužije.
-  // U 'isolated' programů (např. Guardian — pevně domluvená hodnota s
-  // partnerem pro KAŽDÝ voucher zvlášť) by sdílení účtu dvou různých
-  // vouchrů omylem sečetlo jejich smluvně oddělené částky — proto se tu
-  // vždy zakládá nový, izolovaný účet, bez ohledu na to, jestli člověk už
-  // na tomhle programu nějaký účet má. DB partial unique index
-  // (vpc_accounts_pooled_unique, jen WHERE balance_mode='pooled') brání
-  // duplicitě u pooled větve, u isolated žádnou uniqueness nevynucuje.
-  //
-  // is_admin_issued vouchery izolujeme VŽDY, bez ohledu na balance_mode
-  // programu — admin vydává hodnotu jménem klienta zvenčí (výhra/prize),
-  // nikdy to není dobití existující peněženky, ať vzniká na kterémkoli
-  // programu. Bez tohohle by muselo jít spolehnout na to, že admin u
-  // KAŽDÉHO programu, kam by mohl vydat výherní voucher, předem nastaví
-  // balance_mode='isolated' — reálně se to dvakrát nestalo (Ambassador,
-  // Dárkový poukaz) a hodnoty se omylem sloučily s cizím zůstatkem.
-  let accountId: string;
-  if (program.balance_mode === "isolated" || voucher.is_admin_issued) {
-    const { data: newAccount, error: accountInsertError } = await admin
-      .from("vpc_accounts")
-      .insert({
-        end_user_id: endUserId,
-        voucher_program_id: voucher.voucher_program_id,
-        currency: program.currency,
-        balance_mode: "isolated",
-      })
-      .select("id")
-      .single();
-
-    if (accountInsertError) {
-      return NextResponse.json({ ok: false, error: accountInsertError.message }, { status: 500 });
-    }
-    accountId = newAccount.id;
-  } else {
-    const { data: existingAccount, error: accountSelectError } = await admin
-      .from("vpc_accounts")
-      .select("id")
-      .eq("end_user_id", endUserId)
-      .eq("voucher_program_id", voucher.voucher_program_id)
-      .maybeSingle();
-
-    if (accountSelectError) {
-      return NextResponse.json({ ok: false, error: accountSelectError.message }, { status: 500 });
-    }
-
-    if (existingAccount) {
-      accountId = existingAccount.id;
-    } else {
-      const { data: newAccount, error: accountInsertError } = await admin
-        .from("vpc_accounts")
-        .insert({
-          end_user_id: endUserId,
-          voucher_program_id: voucher.voucher_program_id,
-          currency: program.currency,
-          balance_mode: "pooled",
-        })
-        .select("id")
-        .single();
-
-      if (accountInsertError) {
-        return NextResponse.json({ ok: false, error: accountInsertError.message }, { status: 500 });
-      }
-      accountId = newAccount.id;
-    }
+  // Účet pro (end_user, voucher_program) — pooled sdílí zůstatek napříč
+  // vouchery stejného programu, isolated vždy zakládá nový (Guardian
+  // migrace), is_admin_issued vynucuje izolaci bez ohledu na balance_mode
+  // programu (viz HARDENING/konverzace k oběma opravám). Sdílená logika s
+  // app/api/referral/[code]/route.ts — viz lib/accounts.ts.
+  const accountResult = await resolveOrCreateAccount(admin, {
+    endUserId,
+    program: { id: voucher.voucher_program_id, currency: program.currency, balance_mode: program.balance_mode },
+    forceIsolated: voucher.is_admin_issued,
+  });
+  if ("error" in accountResult) {
+    return NextResponse.json({ ok: false, error: accountResult.error }, { status: 500 });
   }
+  const accountId = accountResult.accountId;
 
   // Atomický přechod issued -> activated — WHERE hlídá race condition / dvojí aktivaci
   const { data: updated, error: updateError } = await admin

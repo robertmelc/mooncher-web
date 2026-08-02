@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { VoucherCard } from "@/components/VoucherCard";
+import { Button } from "@/components/Button";
 import { formatCurrency } from "@/lib/format";
 import { voucherStatusLabel, voucherEyebrow } from "@/lib/vouchers";
 import {
@@ -49,6 +50,15 @@ type TemplateData = {
   designTokens: Record<string, string>;
 };
 
+type ReferralLevel = { id: string; name: string; threshold: number };
+type ReferralStatus = {
+  enabled: boolean;
+  code?: string | null;
+  directCount?: number;
+  currentLevel?: ReferralLevel | null;
+  nextLevel?: ReferralLevel | null;
+};
+
 export default function VoucherDetailPage({ params }: { params: { id: string } }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -56,6 +66,9 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
+
+  const [referral, setReferral] = useState<ReferralStatus | null>(null);
+  const [creatingInvite, setCreatingInvite] = useState(false);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -187,6 +200,55 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
     loadVoucher();
   }, [session, params.id]);
 
+  useEffect(() => {
+    if (!session?.access_token) return;
+
+    async function loadReferral() {
+      const res = await fetch(`/api/vouchers/${params.id}/referral`, {
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setReferral(json);
+      }
+    }
+
+    loadReferral();
+    // session je tu záměrně mimo dependency array — HARDENING.md #4.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, params.id]);
+
+  async function handleGetInviteLink() {
+    if (!session) return;
+    setCreatingInvite(true);
+
+    const res = await fetch(`/api/vouchers/${params.id}/referral`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const json = await res.json();
+    setCreatingInvite(false);
+
+    if (res.ok) {
+      setReferral(json);
+    }
+  }
+
+  const inviteUrl =
+    referral?.code && typeof window !== "undefined" ? `${window.location.origin}/app/join/${referral.code}` : null;
+
+  async function handleCopyInvite() {
+    if (!inviteUrl) return;
+    await navigator.clipboard.writeText(inviteUrl);
+  }
+
+  async function handleShareInvite() {
+    if (!inviteUrl) return;
+    if (navigator.share) {
+      await navigator.share({ title: "Pozvánka", url: inviteUrl });
+    }
+  }
+
   const templateRenderHtml =
     voucher && template
       ? renderTemplateHtml(flipped ? template.back_layout : template.front_layout, {
@@ -289,6 +351,39 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
               <div className="flex flex-col items-center gap-3">
                 <div className="qr" aria-hidden="true" />
                 <p className="text-[11.5px] text-ink-dim">Naskenujte u pokladny</p>
+              </div>
+            )}
+
+            {referral?.enabled && (
+              <div className="flex flex-col gap-2.5 rounded-sm border border-line-strong p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11.5px] text-ink-faint">Pozvánkový program</span>
+                  {referral.currentLevel && <span className="badge">{referral.currentLevel.name}</span>}
+                </div>
+                <p className="text-[11.5px] text-ink-dim">
+                  {referral.directCount ?? 0} přímých pozvání
+                  {referral.nextLevel &&
+                    ` · do ${referral.nextLevel.name} zbývá ${referral.nextLevel.threshold - (referral.directCount ?? 0)}`}
+                </p>
+                {referral.code ? (
+                  <>
+                    <p className="break-all rounded-sm bg-panel2 px-3 py-2 font-mono text-[11px] text-ink-dim">
+                      {inviteUrl}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" className="flex-1" onClick={handleCopyInvite}>
+                        Kopírovat odkaz
+                      </Button>
+                      <Button className="flex-1" onClick={handleShareInvite}>
+                        Sdílet
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <Button onClick={handleGetInviteLink} disabled={creatingInvite}>
+                    {creatingInvite ? "Vytvářím…" : "Získat pozvánkový odkaz"}
+                  </Button>
+                )}
               </div>
             )}
           </>

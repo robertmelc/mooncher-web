@@ -9,6 +9,7 @@ const NAV_ITEMS: { label: string; href: string }[] = [
   { label: "Šablony", href: "/business/templates" },
   { label: "POS", href: "/business/pos" },
   { label: "Reporty", href: "/business/reports" },
+  { label: "Úrovně", href: "/business/referrals" },
 ];
 
 export function BusinessSidebar() {
