@@ -76,12 +76,12 @@ export function CashflowChart({ data }: CashflowChartProps) {
         const bottomY = BASELINE_Y + offset;
         return (
           <g key={v}>
-            <line x1={MARGIN.left} y1={topY} x2={WIDTH - MARGIN.right} y2={topY} stroke="var(--line)" strokeWidth={1} />
-            <line x1={MARGIN.left} y1={bottomY} x2={WIDTH - MARGIN.right} y2={bottomY} stroke="var(--line)" strokeWidth={1} />
-            <text x={MARGIN.left - 6} y={topY} textAnchor="end" dominantBaseline="middle" fontSize={9} className="font-mono fill-ink-faint">
+            <line x1={MARGIN.left} y1={topY} x2={WIDTH - MARGIN.right} y2={topY} stroke="var(--ink-faint)" strokeWidth={1} />
+            <line x1={MARGIN.left} y1={bottomY} x2={WIDTH - MARGIN.right} y2={bottomY} stroke="var(--ink-faint)" strokeWidth={1} />
+            <text x={MARGIN.left - 6} y={topY} textAnchor="end" dominantBaseline="middle" fontSize={9} className="font-mono fill-ink-dim">
               {formatAxisValue(v)}
             </text>
-            <text x={MARGIN.left - 6} y={bottomY} textAnchor="end" dominantBaseline="middle" fontSize={9} className="font-mono fill-ink-faint">
+            <text x={MARGIN.left - 6} y={bottomY} textAnchor="end" dominantBaseline="middle" fontSize={9} className="font-mono fill-ink-dim">
               {formatAxisValue(v)}
             </text>
           </g>
@@ -92,10 +92,10 @@ export function CashflowChart({ data }: CashflowChartProps) {
         y1={BASELINE_Y}
         x2={WIDTH - MARGIN.right}
         y2={BASELINE_Y}
-        stroke="var(--line-strong)"
+        stroke="var(--ink-dim)"
         strokeWidth={1}
       />
-      <text x={MARGIN.left - 6} y={BASELINE_Y} textAnchor="end" dominantBaseline="middle" fontSize={9} className="font-mono fill-ink-faint">
+      <text x={MARGIN.left - 6} y={BASELINE_Y} textAnchor="end" dominantBaseline="middle" fontSize={9} className="font-mono fill-ink-dim">
         0
       </text>
 
@@ -125,7 +125,7 @@ export function CashflowChart({ data }: CashflowChartProps) {
                 y={HEIGHT - 4}
                 textAnchor="middle"
                 fontSize={9}
-                className="font-mono fill-ink-faint"
+                className="font-mono fill-ink-dim"
               >
                 {formatDayLabel(d.day)}
               </text>
