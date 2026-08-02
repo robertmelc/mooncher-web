@@ -255,8 +255,16 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   // na tomhle programu nějaký účet má. DB partial unique index
   // (vpc_accounts_pooled_unique, jen WHERE balance_mode='pooled') brání
   // duplicitě u pooled větve, u isolated žádnou uniqueness nevynucuje.
+  //
+  // is_admin_issued vouchery izolujeme VŽDY, bez ohledu na balance_mode
+  // programu — admin vydává hodnotu jménem klienta zvenčí (výhra/prize),
+  // nikdy to není dobití existující peněženky, ať vzniká na kterémkoli
+  // programu. Bez tohohle by muselo jít spolehnout na to, že admin u
+  // KAŽDÉHO programu, kam by mohl vydat výherní voucher, předem nastaví
+  // balance_mode='isolated' — reálně se to dvakrát nestalo (Ambassador,
+  // Dárkový poukaz) a hodnoty se omylem sloučily s cizím zůstatkem.
   let accountId: string;
-  if (program.balance_mode === "isolated") {
+  if (program.balance_mode === "isolated" || voucher.is_admin_issued) {
     const { data: newAccount, error: accountInsertError } = await admin
       .from("vpc_accounts")
       .insert({
