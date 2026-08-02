@@ -169,6 +169,10 @@ export default function ReferralLevelsPage() {
             Bez omezení počtu úrovní, klidně přidejte další.
           </p>
 
+          <Link href="/business/referrals/tree" className="text-[11.5px] text-teal underline">
+            Zobrazit strom pozvání →
+          </Link>
+
           <form onSubmit={handleCreate} className="flex flex-col gap-2.5">
             <div className="flex gap-2.5">
               <div className="flex flex-[2] flex-col gap-1.5">

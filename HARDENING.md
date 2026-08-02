@@ -254,4 +254,35 @@ Odkazy v kódu: `app/api/activate/[token]/route.ts` (nový branch pro
 
 ---
 
-*Aktualizováno: aktivace admin-vydaných vouchrů přihlášením (bod 9), 2. 8. 2026.*
+## 10. `POST /api/referral/[code]` nekontroluje ancestry, jen self-scan
+
+**Problém:** Join endpoint odmítne jen dva případy — naskenování vlastního
+kódu (`caller.id === referrer_end_user_id`) a existující jiný referrer
+(`UNIQUE(client_id, referred_end_user_id)`). Nekontroluje, jestli referrer
+kódu není náhodou **potomek** volajícího ve stejném stromu. Protože
+`vpc_referral_links` garantuje max. jednoho referrera na osobu (jednou
+propojený uzel už nejde přepojit), cyklus může vzniknout jen přes uzel,
+který je zatím čistý kořen (sám nikdy nikým propojen nebyl) — pokud takový
+kořen A později naskenuje kód někoho ve svém vlastním podstromu (např. Z,
+kam se řetězec dostal přes A→B→C→Z), vznikne validní `INSERT`
+`(referrer=Z, referred=A)`, a tím smyčka A→B→C→Z→A.
+
+Objeveno při návrhu RPC funkce pro stromovou vizualizaci (Fáze 3
+referral systému, 2. 8. 2026) — `referral_tree()` proto obsahuje
+obrannou pojistku (`NOT referred_end_user_id = ANY(path)` v rekurzivní
+CTE), takže i kdyby cyklus v datech vznikl, RPC nespadne do nekonečné
+rekurze, jen ho na tom místě ořízne. Pojistka řeší jen zobrazení, ne
+vznik cyklu v datech.
+
+**Skutečné řešení:** v `POST /api/referral/[code]` před `INSERT` ověřit,
+že volající (`caller.id`) není předek referrera — např. rekurzivním
+dotazem "projdi řetězec referrerů od `row.referrer_end_user_id` nahoru,
+narazíš na `caller.id`?" a při shodě join odmítnout stejnou hláškou jako
+"Už jste propojen/a s jiným pozvatelem."
+
+Odkazy v kódu: `app/api/referral/[code]/route.ts`, `referral_tree()` RPC
+funkce (Fáze 3 stromové vizualizace).
+
+---
+
+*Aktualizováno: cyklová mezera v referral join endpointu (bod 10), 2. 8. 2026.*
