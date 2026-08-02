@@ -13,6 +13,43 @@ type CodeRow = {
   voucher_program: { currency: string; balance_mode: string; default_validity_days: number | null } | null;
 };
 
+async function fetchReferrer(
+  admin: ReturnType<typeof createAdminClient>,
+  clientId: string,
+  endUserId: string
+): Promise<string | null> {
+  const { data } = await admin
+    .from("vpc_referral_links")
+    .select("referrer_end_user_id")
+    .eq("client_id", clientId)
+    .eq("referred_end_user_id", endUserId)
+    .maybeSingle();
+  return data?.referrer_end_user_id ?? null;
+}
+
+// Chodí nahoru po referrer řetězci od `startEndUserId` a hlásí, jestli na
+// něj narazí `candidateId` — tedy jestli by nové propojení
+// (referrer=startEndUserId, referred=candidateId) uzavřelo cyklus. Řetězec
+// má na osobu max. jednoho referrera (UNIQUE(client_id, referred_end_user_id)),
+// takže je to O(hloubka), ne drahé; maxHops je jen krajní pojistka proti
+// už existujícím historickým cyklům (viz HARDENING #10), ne běžná cesta.
+async function isAncestor(
+  admin: ReturnType<typeof createAdminClient>,
+  clientId: string,
+  candidateId: string,
+  startEndUserId: string,
+  maxHops = 200
+): Promise<boolean> {
+  let current: string | null = startEndUserId;
+  let hops = 0;
+  while (current && hops < maxHops) {
+    if (current === candidateId) return true;
+    current = await fetchReferrer(admin, clientId, current);
+    hops += 1;
+  }
+  return false;
+}
+
 async function fetchCode(admin: ReturnType<typeof createAdminClient>, code: string) {
   const { data, error } = await admin
     .from("vpc_referral_codes")
@@ -121,6 +158,19 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
   }
 
   if (!existingLink) {
+    // Volající zatím nemá v tomhle klientovi žádného referrera (jinak by
+    // existingLink existoval) — jediný způsob, jak by teď mohl vzniknout
+    // cyklus, je že pozvatel (row.referrer_end_user_id) je ve skutečnosti
+    // POTOMEK volajícího (naskenoval kód někoho ve svém vlastním podstromu).
+    // Viz HARDENING #10 — přesně tímhle vznikl reálný cyklus 2. 8. 2026.
+    const wouldCycle = await isAncestor(admin, row.client_id, caller.id, row.referrer_end_user_id);
+    if (wouldCycle) {
+      return NextResponse.json(
+        { ok: false, error: "Tohle propojení by vytvořilo cyklus ve stromu pozvání." },
+        { status: 400 }
+      );
+    }
+
     const { data: newLink, error: insertError } = await admin
       .from("vpc_referral_links")
       .insert({
