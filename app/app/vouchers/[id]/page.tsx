@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { VoucherCard } from "@/components/VoucherCard";
 import { Button } from "@/components/Button";
+import { QrCode } from "@/components/QrCode";
 import { formatCurrency } from "@/lib/format";
 import { voucherStatusLabel, voucherEyebrow } from "@/lib/vouchers";
 import {
@@ -367,6 +368,9 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
                 </p>
                 {referral.code ? (
                   <>
+                    <div className="flex justify-center py-1">
+                      <QrCode value={inviteUrl ?? ""} />
+                    </div>
                     <p className="break-all rounded-sm bg-panel2 px-3 py-2 font-mono text-[11px] text-ink-dim">
                       {inviteUrl}
                     </p>
