@@ -161,9 +161,18 @@ export default function EndUserHome() {
   return (
     <main className="min-h-screen px-5 py-10">
       <div className="mx-auto flex max-w-md flex-col gap-5">
-        <header className="flex items-center gap-2.5">
-          <MoonMark />
-          <h1 className="font-display text-2xl font-bold tracking-tight">Moje vouchery</h1>
+        <header className="flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <MoonMark />
+            <h1 className="font-display text-2xl font-bold tracking-tight">Moje vouchery</h1>
+          </div>
+          <Link
+            href="/app/settings"
+            aria-label="Nastavení"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-sm border border-line-strong bg-panel2 text-base"
+          >
+            ⚙
+          </Link>
         </header>
 
         {authLoading ? (
