@@ -43,6 +43,8 @@ function LoginForm() {
       <form onSubmit={handleSubmit} className="flex w-full max-w-xs flex-col gap-3">
         <input
           type="email"
+          autoComplete="email"
+          inputMode="email"
           required
           placeholder="vas@email.cz"
           value={email}
