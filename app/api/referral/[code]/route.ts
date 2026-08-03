@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveOrCreateAccount } from "@/lib/accounts";
 import { generateVoucherCode, generateNewVoucherId, placeholderQrSignature } from "@/lib/voucherIssuance";
+import { resolveDefaultProgram } from "@/lib/referrals";
 
 type CodeRow = {
   id: string;
   client_id: string;
   referrer_end_user_id: string;
-  voucher_program_id: string;
   end_user: { first_name: string | null; last_name: string | null } | null;
   client: { name: string } | null;
-  voucher_program: { currency: string; balance_mode: string; default_validity_days: number | null } | null;
 };
 
 async function fetchReferrer(
@@ -51,13 +50,16 @@ async function isAncestor(
 }
 
 async function fetchCode(admin: ReturnType<typeof createAdminClient>, code: string) {
+  // voucher_program_id se tu záměrně nenačítá — kód pořád může vzniknout
+  // z libovolného vouchru (QR jako "digitální vizitka"), ale vydávaný
+  // voucher se od 3. 8. 2026 vždycky řídí ZÁKLADNÍM programem klienta
+  // (vpc_referral_settings), ne programem, odkud kód vznikl.
   const { data, error } = await admin
     .from("vpc_referral_codes")
     .select(
-      `id, client_id, end_user_id, voucher_program_id,
+      `id, client_id, end_user_id,
        end_user:vpc_end_users!end_user_id ( first_name, last_name ),
-       client:vpc_clients ( name ),
-       voucher_program:vpc_voucher_programs ( currency, balance_mode, default_validity_days )`
+       client:vpc_clients ( name )`
     )
     .eq("id", code)
     .maybeSingle();
@@ -111,7 +113,18 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
   if (codeError) {
     return NextResponse.json({ ok: false, error: codeError }, { status: 500 });
   }
-  if (!row || !row.voucher_program) {
+  if (!row) {
+    return NextResponse.json({ ok: false, error: "Pozvánka nenalezena nebo už neplatí." }, { status: 404 });
+  }
+
+  // Vždycky se vydává na ZÁKLADNÍ program klienta, ne na program, ze
+  // kterého kód vznikl — viz konverzace k opravě 3. 8. 2026. Chybějící
+  // nastavení tu bereme jako "pozvánka neplatí", ne jako chybu 500 —
+  // appka navíc od teď nedovolí kód vůbec vytvořit bez nastaveného
+  // základního programu (app/api/vouchers/[id]/referral/route.ts), takže
+  // tenhle stav by nastal jen u historického kódu z doby před opravou.
+  const defaultProgram = await resolveDefaultProgram(admin, row.client_id);
+  if (!defaultProgram) {
     return NextResponse.json({ ok: false, error: "Pozvánka nenalezena nebo už neplatí." }, { status: 404 });
   }
 
@@ -199,15 +212,16 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
     });
   }
 
-  // Vydání vouchru — gatované na "má už příjemce účet na TOMHLE programu",
-  // nezávisle na tom, jestli strom-vztah výše už existoval. Bez týhle
+  // Vydání vouchru — gatované na "má už příjemce účet na ZÁKLADNÍM
+  // programu", nezávisle na tom, jestli strom-vztah výše už existoval a
+  // nezávisle na tom, z jakého vouchru pozvatele kód vznikl. Bez týhle
   // kontroly by opakované otevření stejného odkazu vydávalo voucher znovu
   // a znovu (u isolated programů by šlo o neomezené "vítací dary zdarma").
   const { data: existingAccount } = await admin
     .from("vpc_accounts")
     .select("id")
     .eq("end_user_id", caller.id)
-    .eq("voucher_program_id", row.voucher_program_id)
+    .eq("voucher_program_id", defaultProgram.id)
     .maybeSingle();
 
   let voucherId: string | null = null;
@@ -215,9 +229,9 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
     const accountResult = await resolveOrCreateAccount(admin, {
       endUserId: caller.id,
       program: {
-        id: row.voucher_program_id,
-        currency: row.voucher_program.currency,
-        balance_mode: row.voucher_program.balance_mode,
+        id: defaultProgram.id,
+        currency: defaultProgram.currency,
+        balance_mode: defaultProgram.balance_mode,
       },
     });
     if ("error" in accountResult) {
@@ -229,8 +243,8 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
     const qrPayload = newVoucherId;
     const qrSignature = placeholderQrSignature(qrPayload);
     const validFrom = new Date();
-    const validUntil = row.voucher_program.default_validity_days
-      ? new Date(validFrom.getTime() + row.voucher_program.default_validity_days * 24 * 60 * 60 * 1000)
+    const validUntil = defaultProgram.default_validity_days
+      ? new Date(validFrom.getTime() + defaultProgram.default_validity_days * 24 * 60 * 60 * 1000)
       : null;
 
     // Voucher vzniká rovnou aktivovaný, s nulovou hodnotou — příjemce je
@@ -243,7 +257,7 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
       .insert({
         id: newVoucherId,
         account_id: accountResult.accountId,
-        voucher_program_id: row.voucher_program_id,
+        voucher_program_id: defaultProgram.id,
         code: voucherCode,
         qr_payload: qrPayload,
         qr_signature: qrSignature,
@@ -268,7 +282,7 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
       action: "referral.voucher_issued",
       target_table: "vpc_vouchers",
       target_id: voucherId,
-      after_state: { clientId: row.client_id, programId: row.voucher_program_id, sourceCodeId: row.id },
+      after_state: { clientId: row.client_id, programId: defaultProgram.id, sourceCodeId: row.id },
     });
   }
 

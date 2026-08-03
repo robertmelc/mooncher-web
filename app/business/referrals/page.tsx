@@ -8,6 +8,7 @@ import { BusinessShell } from "@/components/BusinessShell";
 import { Button } from "@/components/Button";
 
 type Level = { id: string; name: string; threshold: number };
+type Program = { id: string; name: string };
 
 export default function ReferralLevelsPage() {
   const [session, setSession] = useState<Session | null>(null);
@@ -23,6 +24,12 @@ export default function ReferralLevelsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editThreshold, setEditThreshold] = useState("");
+
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [defaultProgramId, setDefaultProgramId] = useState<string | null | undefined>(undefined);
+  const [selectedProgramId, setSelectedProgramId] = useState("");
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [defaultProgramMessage, setDefaultProgramMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -62,6 +69,53 @@ export default function ReferralLevelsPage() {
     loadLevels(session.access_token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.access_token) return;
+    const accessToken = session.access_token;
+
+    async function loadDefaultProgram() {
+      const [programsRes, settingsRes] = await Promise.all([
+        fetch("/api/business/programs", { headers: { Authorization: `Bearer ${accessToken}` } }),
+        fetch("/api/business/referrals/settings", { headers: { Authorization: `Bearer ${accessToken}` } }),
+      ]);
+      const programsJson = await programsRes.json();
+      const settingsJson = await settingsRes.json();
+
+      if (programsRes.ok) {
+        setPrograms(programsJson.programs.map((p: Program) => ({ id: p.id, name: p.name })));
+      }
+      if (settingsRes.ok) {
+        setDefaultProgramId(settingsJson.defaultVoucherProgramId);
+        setSelectedProgramId(settingsJson.defaultVoucherProgramId ?? "");
+      }
+    }
+
+    loadDefaultProgram();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
+
+  async function handleSaveDefaultProgram() {
+    if (!session || !selectedProgramId) return;
+    setSavingDefault(true);
+    setDefaultProgramMessage(null);
+
+    const res = await fetch("/api/business/referrals/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ voucherProgramId: selectedProgramId }),
+    });
+    const json = await res.json();
+    setSavingDefault(false);
+
+    if (!res.ok) {
+      setDefaultProgramMessage(json.error ?? "Uložení se nezdařilo.");
+      return;
+    }
+
+    setDefaultProgramId(json.defaultVoucherProgramId);
+    setDefaultProgramMessage("Uloženo.");
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -172,6 +226,37 @@ export default function ReferralLevelsPage() {
           <Link href="/business/referrals/tree" className="text-[11.5px] text-teal underline">
             Zobrazit strom pozvání →
           </Link>
+
+          <div className="flex flex-col gap-2.5 rounded-sm border border-line-strong p-4">
+            <h2 className="font-display text-[14px] font-bold">Základní program pro nové pozvané</h2>
+            <p className="text-[11.5px] leading-relaxed text-ink-faint">
+              Program, na kterém dostane voucher KAŽDÝ, kdo se přes referral propojí — bez ohledu na to, z jakého
+              konkrétního vouchru pozvatele odkaz/QR pochází. Bez nastaveného programu appka pozvánky vůbec
+              nenabízí.
+            </p>
+            <select
+              value={selectedProgramId}
+              onChange={(e) => setSelectedProgramId(e.target.value)}
+              className="rounded-sm border border-line-strong bg-panel px-3 py-2 text-sm text-ink"
+            >
+              <option value="">Vyberte program</option>
+              {programs.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <Button
+              onClick={handleSaveDefaultProgram}
+              disabled={savingDefault || !selectedProgramId || selectedProgramId === defaultProgramId}
+            >
+              {savingDefault ? "Ukládám…" : "Uložit"}
+            </Button>
+            {defaultProgramMessage && <p className="text-[11.5px] text-ink-dim">{defaultProgramMessage}</p>}
+            {defaultProgramId === null && (
+              <p className="text-[11.5px] text-danger">Zatím nenastaveno — pozvánkový program je vypnutý.</p>
+            )}
+          </div>
 
           <form onSubmit={handleCreate} className="flex flex-col gap-2.5">
             <div className="flex gap-2.5">

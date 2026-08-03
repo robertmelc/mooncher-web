@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { resolveCurrentLevel, resolveNextLevel } from "@/lib/referrals";
+import { resolveCurrentLevel, resolveNextLevel, resolveDefaultProgram } from "@/lib/referrals";
 
 type VoucherRow = {
   id: string;
@@ -91,14 +91,18 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const ctx = await resolveContext(admin, req, params.id);
   if ("error" in ctx) return ctx.error;
 
-  // client_id nemá nastavený žádný stupeň → program tam admin/klient
-  // ještě nezapnul, appka odkaz na pozvání vůbec nenabízí.
+  // client_id nemá nastavený žádný stupeň, NEBO nemá vybraný základní
+  // program pro pozvané → appka odkaz na pozvání vůbec nenabízí. Obojí
+  // je vyžadované, ne volitelné s fallbackem — jinak by šlo appku dostat
+  // do stavu "kódy se generují, ale join by neměl co vydat".
   const { count: levelCount } = await admin
     .from("vpc_referral_levels")
     .select("id", { count: "exact", head: true })
     .eq("client_id", ctx.clientId);
 
-  if (!levelCount) {
+  const defaultProgram = await resolveDefaultProgram(admin, ctx.clientId);
+
+  if (!levelCount || !defaultProgram) {
     return NextResponse.json({ ok: true, enabled: false });
   }
 
@@ -127,7 +131,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .select("id", { count: "exact", head: true })
     .eq("client_id", ctx.clientId);
 
-  if (!levelCount) {
+  const defaultProgram = await resolveDefaultProgram(admin, ctx.clientId);
+
+  if (!levelCount || !defaultProgram) {
     return NextResponse.json({ ok: false, error: "Tenhle klient nemá pozvánkový program zapnutý." }, { status: 400 });
   }
 
