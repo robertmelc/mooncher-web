@@ -70,6 +70,10 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
 
   const [referral, setReferral] = useState<ReferralStatus | null>(null);
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [showSmsForm, setShowSmsForm] = useState(false);
+  const [smsPhone, setSmsPhone] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
+  const [smsResult, setSmsResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -250,6 +254,27 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
     }
   }
 
+  async function handleSendSms() {
+    if (!session || !smsPhone.trim()) return;
+    setSendingSms(true);
+    setSmsResult(null);
+
+    const res = await fetch(`/api/vouchers/${params.id}/referral/sms`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: smsPhone.trim() }),
+    });
+    const json = await res.json();
+    setSendingSms(false);
+
+    if (json.ok) {
+      setSmsResult({ ok: true, message: "SMS odeslána." });
+      setSmsPhone("");
+    } else {
+      setSmsResult({ ok: false, message: json.error ?? "Odeslání se nezdařilo." });
+    }
+  }
+
   const templateRenderHtml =
     voucher && template
       ? renderTemplateHtml(flipped ? template.back_layout : template.front_layout, {
@@ -382,6 +407,37 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
                         Sdílet
                       </Button>
                     </div>
+
+                    {showSmsForm ? (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="tel"
+                          value={smsPhone}
+                          onChange={(e) => setSmsPhone(e.target.value)}
+                          placeholder="+420 604 251 244"
+                          className="rounded-sm border border-line-strong bg-panel px-3 py-2 text-sm text-ink"
+                        />
+                        <Button onClick={handleSendSms} disabled={sendingSms || !smsPhone.trim()}>
+                          {sendingSms ? "Odesílám…" : "Poslat SMS"}
+                        </Button>
+                        {smsResult && (
+                          <p className={`text-[11.5px] ${smsResult.ok ? "text-positive" : "text-danger"}`}>
+                            {smsResult.message}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <Button variant="ghost" onClick={() => setShowSmsForm(true)}>
+                        Odeslat SMS pozvánku
+                      </Button>
+                    )}
+
+                    <Link
+                      href={`/app/vouchers/${params.id}/invites`}
+                      className="text-center text-[11.5px] text-teal underline"
+                    >
+                      Moje pozvánky →
+                    </Link>
                   </>
                 ) : (
                   <Button onClick={handleGetInviteLink} disabled={creatingInvite}>

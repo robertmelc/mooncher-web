@@ -3,6 +3,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveOrCreateAccount } from "@/lib/accounts";
 import { generateVoucherCode, generateNewVoucherId, placeholderQrSignature } from "@/lib/voucherIssuance";
 import { resolveDefaultProgram } from "@/lib/referrals";
+import { normalizePhone } from "@/lib/phone";
+
+// "Jan Novák" -> { firstName: "Jan", lastName: "Novák" }; jednoslovné
+// jméno jde celé do firstName, lastName zůstává null. Appka nikde jinde
+// jméno nedělí na složky, tohle je jediné místo, co ho vůbec sbírá.
+function splitName(raw: string): { firstName: string; lastName: string | null } {
+  const trimmed = raw.trim().replace(/\s+/g, " ");
+  const spaceIndex = trimmed.indexOf(" ");
+  if (spaceIndex === -1) return { firstName: trimmed, lastName: null };
+  return { firstName: trimmed.slice(0, spaceIndex), lastName: trimmed.slice(spaceIndex + 1) };
+}
 
 type CodeRow = {
   id: string;
@@ -109,6 +120,16 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
     return NextResponse.json({ ok: false, error: "Neplatná session." }, { status: 401 });
   }
 
+  // name/phone/inviteId jsou nepovinné na úrovni API — appka je posílá jen
+  // z nového tříbolkového formuláře na /app/join/[code]; už propojený
+  // uživatel, co jen znovu potvrzuje, tudy neprojde (viz frontend), takže
+  // tady žádná z nich chybět nemusí, ale povinnost je čistě UX pravidlo
+  // formuláře, ne API kontrakt.
+  const body = await req.json().catch(() => ({}));
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  const phone = typeof body?.phone === "string" ? body.phone.trim() : "";
+  const inviteId = typeof body?.inviteId === "string" ? body.inviteId : null;
+
   const { error: codeError, row } = await fetchCode(admin, params.code);
   if (codeError) {
     return NextResponse.json({ ok: false, error: codeError }, { status: 500 });
@@ -130,11 +151,20 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
 
   // Najít nebo založit end_usera podle přihlášeného auth_user_id — stejný
   // atomický upsert jako u auth-gated aktivace vouchru (viz
-  // app/api/activate/[token]/route.ts, HARDENING.md #9).
+  // app/api/activate/[token]/route.ts, HARDENING.md #9). Jméno/telefon se
+  // zapisují jen když je formulář poslal — první místo v appce, co u
+  // auth-based uživatele zapisuje telefon (dřív jen u aktivace bez
+  // přihlášení), viz HARDENING #9 riziko fragmentace při shodě telefonu.
+  const { firstName, lastName } = name ? splitName(name) : { firstName: null, lastName: null };
   const { data: caller, error: callerError } = await admin
     .from("vpc_end_users")
     .upsert(
-      { auth_user_id: userData.user.id, email: userData.user.email },
+      {
+        auth_user_id: userData.user.id,
+        email: userData.user.email,
+        ...(firstName ? { first_name: firstName, last_name: lastName } : {}),
+        ...(phone ? { phone: normalizePhone(phone) } : {}),
+      },
       { onConflict: "auth_user_id" }
     )
     .select("id")
@@ -284,6 +314,21 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
       target_id: voucherId,
       after_state: { clientId: row.client_id, programId: defaultProgram.id, sourceCodeId: row.id },
     });
+  }
+
+  // Spáruje SMS pozvánku, přes kterou se sem přišlo — jen když odkaz nesl
+  // ?invite=, ne u organického QR/kopírovaného odkazu. Párování je přes
+  // přesné ID pozvánky, ne heuristikou (telefon/jméno) — jeden kód může
+  // mít víc současně čekajících pozvánek. `referral_code_id = row.id`
+  // navíc brání spárování pozvánky z jiného kódu; `status = 'sent'` dělá
+  // z UPDATE idempotentní no-op při opakovaném volání.
+  if (inviteId) {
+    await admin
+      .from("vpc_referral_invites")
+      .update({ status: "joined", joined_at: new Date().toISOString(), joined_end_user_id: caller.id })
+      .eq("id", inviteId)
+      .eq("referral_code_id", row.id)
+      .eq("status", "sent");
   }
 
   return NextResponse.json({ ok: true, clientName: row.client?.name ?? "", voucherId });

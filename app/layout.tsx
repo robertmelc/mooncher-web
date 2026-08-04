@@ -16,6 +16,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Absolutní základ pro relativní og:image URL v podstránkách (např.
+  // /app/join/[code]) — bez tohohle by crawler/náhled odkazu v SMS/
+  // messengerech dostal relativní cestu, kterou neumí vyřešit.
+  metadataBase: new URL("https://mooncher-web.vercel.app"),
   title: "Mooncher",
   description: "Voucherová platforma — Mooncher",
   manifest: "/manifest.json",
