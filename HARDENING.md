@@ -300,4 +300,90 @@ vizualizace).
 
 ---
 
-*Aktualizováno: cyklová mezera v referral join endpointu (bod 10), 2. 8. 2026.*
+## 11. Doba uchovávání `chr_payout_claims` není definovaná
+
+**Problém:** `chr_payout_claims` (charitativní vrstva, výherní listy) drží
+jméno, číslo účtu a telefon výherce — citlivější kategorie údajů než
+telefon u samotného losu. Appka dnes nemá žádný mechanismus na jejich
+mazání po uplynutí doby, kterou má smysl je uchovávat (typicky dané
+účetní/daňovou legislativou u dokladů k výplatě z nadačního fondu, ne
+appkou samotnou).
+
+**Proč to teď nejde vyřešit natvrdo:** přesná délka retence je právní/účetní
+otázka (řádově roky, podle zákona o účetnictví/daňového řádu), ne technické
+rozhodnutí — appka žádné číslo nevymýšlí, dokud ho nepotvrdí účetní klienta.
+Appka navíc nemá žádnou infrastrukturu na scheduled/cron mazání (stejná
+mezera jako u chybějícího LNE compliance jobu, bod #5) — i po potvrzení
+retenční doby by šlo o novou, zatím neexistující schopnost.
+
+**Zmírněno teď:** přístup k `chr_payout_claims` je striktně omezený —
+RLS zapnuté bez politik (service-role only) a číslo účtu čte jen
+`resolveAdmin()` gated route (platform_admin), ne `client_operator`.
+
+**Skutečné řešení:** potvrdit s účetní Golden Blot (nebo obecně
+klienta) přesnou retenční dobu, pak postavit scheduled mazání/anonymizaci
+— ideálně spolu s bodem #5, až vznikne první scheduled-job infrastruktura
+v appce, ať se neřeší dvakrát zvlášť.
+
+Odkazy v kódu: `chr_payout_claims` tabulka, `app/api/admin/charity/claims/[id]/route.ts`.
+
+---
+
+## 12. GET route handlery bez čtení hlaviček/cookies/query — riziko zamrzlé odpovědi
+
+**Problém:** Next.js App Router považuje GET route handler za staticky
+cachovatelný, pokud během vykonání nesáhne na nic z requestu (hlavičky,
+cookies, query parametry) — první odpověď se pak může "zamrznout" a appka
+donekonečna vrací STEJNÁ data, i když se realita v DB mezitím změnila.
+Dynamické segmenty v cestě (`[id]`) samy o sobě dynamické vykreslování
+nevynucují — jen skutečné čtení z `Request` objektu ano.
+
+Objeveno 6. 8. 2026 u `/api/win/[id]` (charitativní vrstva, výherní list) —
+appka po zneplatnění listu dál veřejně hlásila "čeká na uplatnění" místo
+"zneplatněno", protože GET handler nečetl nic z requestu. Oprava:
+`export const dynamic = "force-dynamic";`.
+
+**Kompletní audit (6. 8. 2026)** — všech 28 GET route handlerů v appce,
+ručně, ne jen grepem (parametry cesty typu `[id]` se nepočítají, jen
+skutečné čtení `req.headers`/`req.cookies`/`req.nextUrl.searchParams`):
+
+**Potvrzeně postižené stejným vzorem (`_req` nepoužitý, nic z requestu se
+nečte):**
+- `app/api/win/[id]/route.ts` — **OPRAVENO** 6. 8. 2026. Veřejný náhled
+  výherního listu. Zamrzlá odpověď by znamenala, že zneplatněný/uplatněný
+  list dál svítí jako platný — reálné riziko u peněz, přesně tenhle
+  případ appku na chybu upozornil.
+- `app/api/referral/[code]/route.ts` — **OPRAVENO** 6. 8. 2026 (údržba
+  jádra platformy, samostatný commit). Veřejný náhled referral pozvánky
+  (`clientName`/`referrerName`). Nižší praktická závažnost — tahle data
+  se prakticky nemění po vzniku kódu — ale stejná třída chyby.
+- `app/api/activate/[token]/route.ts` — **NEOPRAVENO, vědomě.** Veřejný
+  náhled aktivace vouchru (`issuedToName`, `message`, jestli je voucher
+  ještě volný k aktivaci — `voucher.status !== "issued" || voucher.account_id`).
+  Zamrzlá odpověď by mohla ukazovat voucher jako "ještě volný k aktivaci"
+  i poté, co ho někdo mezitím aktivoval — zavádějící UX, ale samotná
+  aktivace (`POST`) si stav ověřuje znovu z DB, takže ne bezpečnostní
+  díra, jen matoucí náhled. Ze všech nalezených nejblíž penězům/reálným
+  voucherům, proto vyšší priorita k opravě než referral.
+
+**Zbylých 25 GET handlerů** (`/api/admin/*`, `/api/business/*`,
+`/api/vouchers/[id]/referral*`) skutečně čtou `Authorization` hlavičku —
+buď přímo v těle GET funkce, nebo přes sdílenou `resolveAdmin()` /
+`resolveClientOperator()` / `resolveContext()`, které dostávají živý
+request/token a hlavičku čtou uvnitř. To by mělo Next.js donutit renderovat
+dynamicky (sleduje skutečné použití API na požadavku, ne text souboru) —
+ale u těch, co čtou přes sdílenou funkci (`vouchers/[id]/referral/route.ts`,
+`.../invites/route.ts`), to nebylo empiricky ověřeno stejným
+"rozbij a oprav" testem jako u předchozích tří, jen odvozeno z toho, jak
+Next.js dynamiku detekuje. Nižší jistota, ale žádný z nich není veřejný
+(všechny vyžadují platnou session), takže i kdyby cachovaly, dopad by byl
+"vidím svoje vlastní stará data", ne cizí/citlivá.
+
+**Skutečné řešení:** opravovat podle týhle priority (peníze/veřejné napřed),
+ne nahodile — `activate/[token]` je další na řadě.
+
+Odkazy v kódu: viz seznam výše.
+
+---
+
+*Aktualizováno: audit GET route cachování (bod 12), charitativní vrstva — výherní list, 6. 8. 2026.*
