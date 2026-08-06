@@ -564,4 +564,49 @@ Odkazy v kódu: `app/api/business/pos/redeem/route.ts` (obě větve,
 
 ---
 
-*Aktualizováno: vícevydavatelské karty — tři chyby nalezené a opravené při ověřování (bod 13), CHECK proti zápornému zůstatku (bod 15), 8. 2026.*
+## 16. Testovací data vícevydavatelských karet v produkční databázi — smazat před nasazením na reálnou skupinu
+
+**Problém:** ověřování bodů #13–15 vzniklo přímo v produkční databázi
+(žádné jiné prostředí appka zatím nemá) a část toho, co vzniklo, je
+záměrně ponechaná jako trvalé demo, ne uklizená po testu:
+
+- `vpc_clients`: **TEST Hotel**, **TEST Restaurace**, **TEST Wellness**
+  (`contact_email` `test-hotel@example.com` / `test-restaurace@example.com`
+  / `test-wellness@example.com`).
+- `vpc_voucher_programs`: TEST Hotel karta, TEST Restaurace karta,
+  TEST Wellness karta (`network_scope.merchant_ids` s prefixem `test-`).
+- `vpc_client_groups`: "TEST Skupina (Royal Spa vzor)" +
+  `vpc_client_group_members` (settlement_priority hotel/restaurace/wellness
+  1/2/3).
+- `vpc_multi_issuer_programs`: "TEST Lázeňská karta" (50/30/20 split) +
+  `vpc_multi_issuer_program_members`.
+- `vpc_client_users` (operátoři): `qa.multiissuer.hotel@example.com`,
+  `qa.multiissuer.restaurace@example.com`, `qa.multiissuer.wellness@example.com`.
+- Karta **MULTI-ACZ3DK** (voucher, jeho `vpc_voucher_issuer_accounts`,
+  `vpc_ledger_entries`, `vpc_redemptions`, `vpc_inter_issuer_settlements`)
+  — držena záměrně v čistém, ne poškozeném stavu jako živé demo funkce
+  (rozpis podle firem, vyrovnaný i nevyrovnaný dluh v přehledu).
+
+**Proč to appka nesmí prostě smazat sama:** je to jediná skupina s víc
+firmami, na které funkce vůbec něco ukáže — bez ní `/admin/multi-issuer`,
+`/admin/settlements` i detail karty v `/app` nemají na čem předvést, že
+fungují. Smazat rovnou při dokončení práce by znamenalo nechat funkci bez
+jediného ověřitelného příkladu v appce.
+
+**Skutečné řešení:** až vznikne první SKUTEČNÁ skupina (reálné firmy,
+podepsaná dohoda — viz i explicitní instrukce z návrhové fáze: "Dokud není
+dohoda podepsaná, nechci mít v produkční databázi jejich strukturu"),
+smazat všechno vyjmenované výše. Bez tohohle zápisu to nemá kdo připomenout
+— appka žádnou "je tohle ještě potřeba" kontrolu nemá a nemůže mít, jde
+o obchodní rozhodnutí, ne technické.
+
+Odkazy v kódu: žádné (čistě datová položka) — týká se tabulek
+`vpc_clients`, `vpc_voucher_programs`, `vpc_client_groups`,
+`vpc_client_group_members`, `vpc_multi_issuer_programs`,
+`vpc_multi_issuer_program_members`, `vpc_client_users`, `vpc_vouchers`
+a navázaných `vpc_voucher_issuer_accounts` / `vpc_ledger_entries` /
+`vpc_redemptions` / `vpc_inter_issuer_settlements`.
+
+---
+
+*Aktualizováno: vícevydavatelské karty — tři chyby nalezené a opravené při ověřování (bod 13), CHECK proti zápornému zůstatku (bod 15), testovací data k úklidu před ostrým nasazením (bod 16), 8. 2026.*
