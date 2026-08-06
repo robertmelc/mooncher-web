@@ -5,6 +5,11 @@ import { generateVoucherCode, generateNewVoucherId, placeholderQrSignature } fro
 import { resolveDefaultProgram } from "@/lib/referrals";
 import { normalizePhone } from "@/lib/phone";
 
+// Bez tohohle Next.js App Router považuje GET (nečte hlavičky/cookies/query)
+// za staticky cachovatelnou routu a "zamrzne" první odpověď navěky — stejná
+// chyba, na kterou appka narazila u /api/win/[id] (výherní list), 6. 8. 2026.
+export const dynamic = "force-dynamic";
+
 // "Jan Novák" -> { firstName: "Jan", lastName: "Novák" }; jednoslovné
 // jméno jde celé do firstName, lastName zůstává null. Appka nikde jinde
 // jméno nedělí na složky, tohle je jediné místo, co ho vůbec sbírá.
