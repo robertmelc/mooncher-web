@@ -23,7 +23,6 @@ export default function AdminSettlementsPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [settlements, setSettlements] = useState<Settlement[] | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,8 +90,6 @@ export default function AdminSettlementsPage() {
     <AdminShell title="Dluhy mezi firmami">
       {authLoading || settlements === undefined ? (
         <p className="font-mono text-sm text-ink-dim">Načítám…</p>
-      ) : error ? (
-        <p className="font-mono text-sm text-danger">{error}</p>
       ) : settlements === null ? (
         <div className="rounded-sm border border-dashed border-line-strong p-6 text-center text-sm text-ink-faint">
           Nemáte oprávnění k tomuto rozhraní.

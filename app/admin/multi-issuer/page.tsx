@@ -24,7 +24,6 @@ export default function AdminMultiIssuerPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [programs, setPrograms] = useState<Program[] | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
 
   const [programId, setProgramId] = useState("");
   const [phone, setPhone] = useState("");

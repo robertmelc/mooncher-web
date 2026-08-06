@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveClientOperator } from "@/lib/business-auth";
-import { getAccountBalance, getAccountBalances } from "@/lib/ledger";
+import { getAccountBalances } from "@/lib/ledger";
 
 const REDEEMABLE_STATUSES = ["activated", "partially_used"];
 
