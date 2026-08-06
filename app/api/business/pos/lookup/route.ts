@@ -46,6 +46,24 @@ export async function GET(req: NextRequest) {
   const voucher = voucherRow as unknown as VoucherRow | null;
 
   if (!voucher || !voucher.voucher_program || voucher.voucher_program.client_id !== operator.clientId) {
+    // Není to platební voucher — možná je to výherní list z charitativní
+    // vrstvy (chr_winning_tickets), který se u pokladny záměrně nedá
+    // uplatnit. Obecné "Voucher nenalezen" by tenhle konkrétní, časný
+    // omyl u pultu nevysvětlilo — viz konverzace k výhernímu listu.
+    const { data: winningTicket } = await admin
+      .from("chr_winning_tickets")
+      .select("id")
+      .eq("list_number", code)
+      .eq("client_id", operator.clientId)
+      .maybeSingle();
+
+    if (winningTicket) {
+      return NextResponse.json(
+        { ok: false, error: "Tohle je výherní list, ne platební voucher — nedá se jím platit, jen si přes něj řeknete o výplatu výhry." },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({ ok: false, error: "Voucher nenalezen." }, { status: 404 });
   }
 
