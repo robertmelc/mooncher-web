@@ -16,6 +16,17 @@ type FoundVoucher = {
   programName: string;
   currency: string;
   balance: number;
+  isMultiIssuer?: boolean;
+  totalBalance?: number;
+  clientName?: string;
+};
+
+type DrawPlanEntry = { clientId: string; clientName: string; amount: number };
+type GroupSettlementOffer = {
+  ownBalance: number;
+  shortfall: number;
+  totalAvailable: number;
+  drawPlan: DrawPlanEntry[];
 };
 
 export default function PosPage() {
@@ -31,6 +42,8 @@ export default function PosPage() {
   const [amount, setAmount] = useState("");
   const [redeeming, setRedeeming] = useState(false);
   const [redeemResult, setRedeemResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [groupSettlementOffer, setGroupSettlementOffer] = useState<GroupSettlementOffer | null>(null);
+  const [pendingIdempotencyKey, setPendingIdempotencyKey] = useState<string | null>(null);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -68,6 +81,8 @@ export default function PosPage() {
     setLookupError(null);
     setVoucher(null);
     setRedeemResult(null);
+    setGroupSettlementOffer(null);
+    setPendingIdempotencyKey(null);
     setAmount("");
 
     const res = await fetch(`/api/business/pos/lookup?code=${encodeURIComponent(code.trim())}`, {
@@ -96,6 +111,57 @@ export default function PosPage() {
 
     setRedeeming(true);
     setRedeemResult(null);
+    setGroupSettlementOffer(null);
+
+    const idempotencyKey = crypto.randomUUID();
+    setPendingIdempotencyKey(idempotencyKey);
+
+    const json = await submitRedeem(numericAmount, idempotencyKey, false);
+    setRedeeming(false);
+    if (!json) return;
+
+    if (json.needsGroupSettlement) {
+      // Appka JEN NABÍZÍ doplatek ze skupiny — nezapisuje nic, dokud
+      // obsluha výslovně nepotvrdí, viz konverzace k vícevydavatelským kartám.
+      setGroupSettlementOffer({
+        ownBalance: json.ownBalance,
+        shortfall: json.shortfall,
+        totalAvailable: json.totalAvailable,
+        drawPlan: json.drawPlan,
+      });
+      return;
+    }
+
+    if (!json.ok) {
+      setRedeemResult({ ok: false, message: json.error ?? "Uplatnění se nezdařilo." });
+      return;
+    }
+
+    applyRedeemSuccess(json);
+  }
+
+  async function handleConfirmGroupSettlement() {
+    if (!session || !voucher || !pendingIdempotencyKey) return;
+    const numericAmount = Number(amount);
+
+    setRedeeming(true);
+    setRedeemResult(null);
+
+    const json = await submitRedeem(numericAmount, pendingIdempotencyKey, true);
+    setRedeeming(false);
+    if (!json) return;
+
+    if (!json.ok) {
+      setRedeemResult({ ok: false, message: json.error ?? "Uplatnění se nezdařilo." });
+      return;
+    }
+
+    setGroupSettlementOffer(null);
+    applyRedeemSuccess(json);
+  }
+
+  async function submitRedeem(numericAmount: number, idempotencyKey: string, confirmGroupSettlement: boolean) {
+    if (!session || !voucher) return null;
 
     const res = await fetch("/api/business/pos/redeem", {
       method: "POST",
@@ -103,21 +169,30 @@ export default function PosPage() {
       body: JSON.stringify({
         voucherId: voucher.id,
         amount: numericAmount,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey,
+        confirmGroupSettlement,
       }),
     });
-    const json = await res.json();
+    return res.json();
+  }
 
-    setRedeeming(false);
-
-    if (!res.ok) {
-      setRedeemResult({ ok: false, message: json.error ?? "Uplatnění se nezdařilo." });
-      return;
-    }
-
-    setRedeemResult({ ok: true, message: "Uplatněno." });
-    setVoucher((prev) => (prev ? { ...prev, balance: json.newBalance, status: json.newStatus } : prev));
+  function applyRedeemSuccess(json: {
+    newBalance: number;
+    newStatus: string;
+    totalBalance?: number;
+    settlements?: { clientName: string; amount: number }[];
+  }) {
+    const settlementNote = json.settlements?.length
+      ? ` (doplaceno: ${json.settlements.map((s) => `${s.clientName} ${s.amount} Kč`).join(", ")})`
+      : "";
+    setRedeemResult({ ok: true, message: `Uplatněno.${settlementNote}` });
+    setVoucher((prev) =>
+      prev
+        ? { ...prev, balance: json.newBalance, status: json.newStatus, totalBalance: json.totalBalance ?? prev.totalBalance }
+        : prev
+    );
     setAmount("");
+    setPendingIdempotencyKey(null);
   }
 
   if (!authLoading && !session) {
@@ -183,16 +258,28 @@ export default function PosPage() {
                 <span className="text-[13.5px] font-semibold">{voucher.programName}</span>
                 <span className="badge">{voucherStatusLabel(voucher.status)}</span>
               </div>
+
+              {voucher.isMultiIssuer && (
+                <p className="text-[11px] text-ink-faint">
+                  Čerpá se z: <span className="text-ink">{voucher.clientName}</span>
+                </p>
+              )}
+
               <div className="font-display text-2xl font-bold text-teal">
                 {formatCurrency(voucher.balance, voucher.currency)}
               </div>
+              {voucher.isMultiIssuer && voucher.totalBalance !== undefined && (
+                <p className="text-[11px] text-ink-faint">
+                  Na kartě celkem: {formatCurrency(voucher.totalBalance, voucher.currency)}
+                </p>
+              )}
               <span className="font-mono text-[10px] text-ink-faint">{voucher.code}</span>
 
               <label className="mt-2 text-[11.5px] text-ink-faint">Částka k uplatnění</label>
               <input
                 type="number"
                 min={1}
-                max={voucher.balance}
+                max={voucher.isMultiIssuer ? voucher.totalBalance : voucher.balance}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="rounded-sm border border-line-strong bg-panel px-3 py-2 text-center text-sm text-ink"
@@ -201,6 +288,37 @@ export default function PosPage() {
               <Button onClick={handleRedeem} disabled={redeeming} className="mt-1">
                 {redeeming ? "Zpracovávám…" : "Potvrdit uplatnění"}
               </Button>
+
+              {groupSettlementOffer && (
+                <div className="mt-1 flex flex-col gap-2 rounded-sm border border-line-strong bg-panel2 p-3">
+                  <p className="text-[12px] text-ink">
+                    U firmy <b>{voucher.clientName}</b> zbývá {formatCurrency(groupSettlementOffer.ownBalance, voucher.currency)},
+                    chybí ještě {formatCurrency(groupSettlementOffer.shortfall, voucher.currency)}.
+                  </p>
+                  <p className="text-[11.5px] text-ink-dim">
+                    Doplatit ze skupiny:{" "}
+                    {groupSettlementOffer.drawPlan.map((d) => `${d.clientName} ${formatCurrency(d.amount, voucher.currency)}`).join(", ")}
+                  </p>
+                  <p className="text-[11px] text-ink-faint">
+                    Jde o převod mezi spřízněnými osobami — mezi firmami vznikne evidovaný dluh.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button onClick={handleConfirmGroupSettlement} disabled={redeeming} className="flex-1">
+                      {redeeming ? "Zpracovávám…" : "Doplatit ze skupiny"}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupSettlementOffer(null);
+                        setPendingIdempotencyKey(null);
+                      }}
+                      className="rounded-sm border border-line-strong px-3 py-2 text-[12px] text-ink-dim"
+                    >
+                      Zrušit
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {redeemResult && (
                 <p className={`text-[11.5px] ${redeemResult.ok ? "text-positive" : "text-danger"}`}>

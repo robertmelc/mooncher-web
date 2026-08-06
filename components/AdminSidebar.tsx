@@ -10,6 +10,8 @@ const NAV_ITEMS: { label: string; href: string }[] = [
   { label: "Šablony", href: "/admin/templates" },
   { label: "Losování", href: "/admin/draw" },
   { label: "Výherní listy", href: "/admin/charity" },
+  { label: "Vícevydavatelské karty", href: "/admin/multi-issuer" },
+  { label: "Dluhy mezi firmami", href: "/admin/settlements" },
   { label: "Síť", href: "/admin/referrals" },
   { label: "Vydat voucher", href: "/admin/issue-voucher" },
   { label: "Audit log", href: "/admin/audit-log" },

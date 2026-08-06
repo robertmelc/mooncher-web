@@ -96,7 +96,7 @@ export default function EndUserHome() {
         return;
       }
 
-      const [vouchersRes, ledgerRes] = await Promise.all([
+      const [vouchersRes, ledgerRes, multiIssuerRes] = await Promise.all([
         supabase
           .from("vpc_vouchers")
           .select(
@@ -113,6 +113,16 @@ export default function EndUserHome() {
           .select("account_id, balance_after, created_at")
           .in("account_id", accountIds)
           .order("created_at", { ascending: false }),
+        // Vícevydavatelské karty mají account_id vždy null (viz konverzace),
+        // takže je dotaz výše na vpc_vouchers nikdy nenajde — appka by
+        // vlastníkovi tiše schovala jeho vlastní kartu (skutečný nález
+        // z auditu HARDENING #12/multi-issuer návrhu, 8/2026). Navíc
+        // vpc_voucher_issuer_accounts má RLS bez politik (service-role
+        // only), takže se to nedá dotáhnout přímo odsud — jde přes
+        // vlastní server route.
+        fetch("/api/vouchers/multi-issuer", {
+          headers: { Authorization: `Bearer ${session!.access_token}` },
+        }).then((res) => res.json()),
       ]);
 
       if (vouchersRes.error) {
@@ -131,7 +141,7 @@ export default function EndUserHome() {
         }
       }
 
-      const cards: VoucherCardData[] = (
+      const singleIssuerCards: VoucherCardData[] = (
         (vouchersRes.data as unknown as VoucherWithProgram[]) ?? []
       )
         .filter((v) => v.voucher_program)
@@ -152,7 +162,27 @@ export default function EndUserHome() {
           };
         });
 
-      setVouchers(cards);
+      type MultiIssuerVoucher = {
+        id: string;
+        code: string;
+        status: string;
+        programName: string;
+        currency: string;
+        totalBalance: number;
+      };
+      const multiIssuerCards: VoucherCardData[] = (
+        (multiIssuerRes.ok ? multiIssuerRes.vouchers : []) as MultiIssuerVoucher[]
+      ).map((v) => ({
+        id: v.id,
+        eyebrow: "Vícevydavatelská karta",
+        title: v.programName,
+        subtitle: "Rozpis podle firem na detailu",
+        amount: formatCurrency(v.totalBalance, v.currency),
+        code: v.code,
+        status: voucherStatusLabel(v.status),
+      }));
+
+      setVouchers([...singleIssuerCards, ...multiIssuerCards]);
     }
 
     loadVouchers();

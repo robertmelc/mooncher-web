@@ -14,6 +14,10 @@ export function generateVoucherCode(): string {
   return `GIFT-${randomCode(6)}`;
 }
 
+export function generateMultiIssuerVoucherCode(): string {
+  return `MULTI-${randomCode(6)}`;
+}
+
 // qr_payload/qr_signature zatím BEZ reálného HMAC podpisu se secret_key
 // z Supabase Vault (B4 §3) — ta infrastruktura nikde v appce neexistuje,
 // stejný stav jako aktivační token (raw voucher.id) a POS lookup/redeem,

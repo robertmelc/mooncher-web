@@ -20,6 +20,7 @@ type VoucherWithProgram = {
   code: string;
   status: string;
   account_id: string;
+  multi_issuer_program_id: string | null;
   valid_until: string | null;
   message: string | null;
   is_admin_issued: boolean;
@@ -60,10 +61,22 @@ type ReferralStatus = {
   nextLevel?: ReferralLevel | null;
 };
 
+type MultiIssuerBreakdown = { clientName: string; balance: number };
+type MultiIssuerVoucherDetail = {
+  id: string;
+  code: string;
+  status: string;
+  programName: string;
+  currency: string;
+  totalBalance: number;
+  breakdown: MultiIssuerBreakdown[];
+};
+
 export default function VoucherDetailPage({ params }: { params: { id: string } }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [voucher, setVoucher] = useState<VoucherDetail | null | undefined>(undefined);
+  const [multiIssuerVoucher, setMultiIssuerVoucher] = useState<MultiIssuerVoucherDetail | null>(null);
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
@@ -94,6 +107,23 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
     if (!session) return;
 
     async function loadVoucher() {
+      // Vícevydavatelské karty zkusit nejdřív, přes server route (service
+      // role) — přímý klientský dotaz na vpc_vouchers níže je scoped RLS
+      // politikou na account_id vlastníka, a multi-issuer voucher má
+      // account_id vždy null (viz konverzace), takže by ho RLS mohla tiše
+      // vyfiltrovat ještě dřív, než se dostane k jakékoli kontrole v kódu.
+      // Nejde tedy jen o "zkusit nejdřív", ale o jediný spolehlivý způsob,
+      // jak takovou kartu vůbec najít.
+      const multiRes = await fetch(`/api/vouchers/multi-issuer/${params.id}`, {
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
+      const multiJson = await multiRes.json();
+      if (multiJson.ok) {
+        setMultiIssuerVoucher(multiJson.voucher);
+        setVoucher(null);
+        return;
+      }
+
       const { data: endUser, error: endUserError } = await supabase
         .from("vpc_end_users")
         .select("id")
@@ -273,6 +303,54 @@ export default function VoucherDetailPage({ params }: { params: { id: string } }
     } else {
       setSmsResult({ ok: false, message: json.error ?? "Odeslání se nezdařilo." });
     }
+  }
+
+  // Vícevydavatelská karta má vlastní, jednodušší zobrazení — žádná
+  // šablona/flip/referral sekce, ty patří k jednomu konkrétnímu programu,
+  // co tahle karta nemá (viz konverzace). Total + rozpis podle firem.
+  if (multiIssuerVoucher) {
+    return (
+      <main className="min-h-screen px-5 py-10">
+        <div className="mx-auto flex max-w-md flex-col gap-5">
+          <header className="flex items-center gap-3">
+            <Link
+              href="/app"
+              className="flex h-8 w-8 items-center justify-center rounded-sm border border-line-strong text-ink-dim"
+              aria-label="Zpět"
+            >
+              ‹
+            </Link>
+            <h1 className="font-display text-lg font-bold tracking-tight">Detail karty</h1>
+          </header>
+
+          <VoucherCard
+            eyebrow="Vícevydavatelská karta"
+            title={multiIssuerVoucher.programName}
+            subtitle={`${multiIssuerVoucher.breakdown.length} firmy`}
+            amount={formatCurrency(multiIssuerVoucher.totalBalance, multiIssuerVoucher.currency)}
+            code={multiIssuerVoucher.code}
+            status={voucherStatusLabel(multiIssuerVoucher.status)}
+          />
+
+          <div>
+            <h2 className="mb-2 font-display text-[14px] font-bold">Rozpis podle firem</h2>
+            <div className="flex flex-col gap-2">
+              {multiIssuerVoucher.breakdown.map((b, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-sm border border-line-strong px-3.5 py-2.5"
+                >
+                  <span className="text-[13px] text-ink">{b.clientName}</span>
+                  <span className="font-mono text-[13px] text-ink-dim">
+                    {formatCurrency(b.balance, multiIssuerVoucher.currency)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   const templateRenderHtml =

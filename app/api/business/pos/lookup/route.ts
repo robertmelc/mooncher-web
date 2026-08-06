@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveClientOperator } from "@/lib/business-auth";
+import { getAccountBalance, getAccountBalances } from "@/lib/ledger";
 
 const REDEEMABLE_STATUSES = ["activated", "partially_used"];
 
@@ -8,9 +9,12 @@ type VoucherRow = {
   id: string;
   code: string;
   status: string;
-  account_id: string;
+  account_id: string | null;
+  multi_issuer_program_id: string | null;
   voucher_program: { name: string; client_id: string; currency: string } | null;
 };
+
+type IssuerAccountRow = { account_id: string; client_id: string; client: { name: string } | null };
 
 // Viz komentář v lib/business-auth.ts — proč tohle jede přes service roli.
 // Vlastnictví (client_id shoda) se ověřuje tady i znovu v /redeem — nikdy
@@ -33,7 +37,7 @@ export async function GET(req: NextRequest) {
   const { data: voucherRow, error: voucherError } = await admin
     .from("vpc_vouchers")
     .select(
-      `id, code, status, account_id,
+      `id, code, status, account_id, multi_issuer_program_id,
        voucher_program:vpc_voucher_programs ( name, client_id, currency )`
     )
     .eq("code", code)
@@ -44,6 +48,62 @@ export async function GET(req: NextRequest) {
   }
 
   const voucher = voucherRow as unknown as VoucherRow | null;
+
+  // Vícevydavatelská karta — jiná cesta hned od začátku, nesahá na
+  // jednovydavatelskou logiku pod tímhle blokem vůbec. voucher_program je
+  // u ní vždy null (viz konverzace), takže bez týhle větve by spadla do
+  // stejné "Voucher nenalezen" větve jako neexistující kód.
+  if (voucher?.multi_issuer_program_id) {
+    if (!REDEEMABLE_STATUSES.includes(voucher.status)) {
+      return NextResponse.json(
+        { ok: false, error: "Tento voucher nelze teď uplatnit.", status: voucher.status },
+        { status: 409 }
+      );
+    }
+
+    const { data: issuerAccountsData, error: issuerAccountsError } = await admin
+      .from("vpc_voucher_issuer_accounts")
+      .select("account_id, client_id, client:vpc_clients ( name )")
+      .eq("voucher_id", voucher.id);
+
+    if (issuerAccountsError) {
+      return NextResponse.json({ ok: false, error: issuerAccountsError.message }, { status: 500 });
+    }
+
+    const issuerAccounts = (issuerAccountsData ?? []) as unknown as IssuerAccountRow[];
+    const ownAccount = issuerAccounts.find((a) => a.client_id === operator.clientId);
+
+    if (!ownAccount) {
+      // Karta existuje, ale tenhle klient v její skupině vůbec není —
+      // stejná generická hláška jako u cizího/neexistujícího kódu.
+      return NextResponse.json({ ok: false, error: "Voucher nenalezen." }, { status: 404 });
+    }
+
+    const { data: programData } = await admin
+      .from("vpc_multi_issuer_programs")
+      .select("name, currency")
+      .eq("id", voucher.multi_issuer_program_id)
+      .maybeSingle();
+
+    const balances = await getAccountBalances(admin, issuerAccounts.map((a) => a.account_id));
+    const ownBalance = balances.get(ownAccount.account_id) ?? 0;
+    const totalBalance = Array.from(balances.values()).reduce((a, b) => a + b, 0);
+
+    return NextResponse.json({
+      ok: true,
+      voucher: {
+        id: voucher.id,
+        code: voucher.code,
+        status: voucher.status,
+        isMultiIssuer: true,
+        programName: programData?.name ?? "",
+        currency: programData?.currency ?? "CZK",
+        balance: ownBalance,
+        totalBalance,
+        clientName: ownAccount.client?.name ?? "",
+      },
+    });
+  }
 
   if (!voucher || !voucher.voucher_program || voucher.voucher_program.client_id !== operator.clientId) {
     // Není to platební voucher — možná je to výherní list z charitativní

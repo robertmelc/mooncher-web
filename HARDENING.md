@@ -391,4 +391,177 @@ Odkazy v kódu: viz seznam výše.
 
 ---
 
-*Aktualizováno: audit GET route cachování (bod 12), charitativní vrstva — výherní list, 6. 8. 2026.*
+## 13. Vícevydavatelské čerpání se skupinovým doplatkem — částečné selhání napříč firmami
+
+**Problém:** existující riziko z bodu #2 (sekvence REST volání, ne jedna DB
+transakce) se u vícevydavatelských karet netýká jen jednoho účtu, ale
+klidně tří najednou — čerpání s doplatkem zapisuje odečet na vlastním
+účtu operátorova klienta A odečet na účtu firmy, co doplácí. Pokud appka
+spadne mezi těmito dvěma zápisy, vznikne stav, který dosavadní riziko
+nezná: dva různé PRÁVNÍ SUBJEKTY mají neshodující se účetnictví mezi
+sebou, ne jen jedna appka nekonzistentní se svým vlastním voucherem.
+Proto samostatná položka, ne rozšíření #2.
+
+**Zmírněno teď:**
+1. `vpc_inter_issuer_settlements` řádek (evidence dluhu) vzniká VÝHRADNĚ
+   po úspěchu všech odečtů dané transakce — nikdy dřív. Stejně tak
+   `vpc_redemptions`.
+2. Pokud kterýkoli odečet uprostřed sekvence selže, appka nezkouší nic
+   "vrátit zpět" (nemá jak — stejné omezení jako #2), ale vrátí operátorovi
+   čestnou chybu ("Uplatnění se nedokončilo, kontaktujte podporu.") a
+   zapíše do `vpc_audit_log` `action: "voucher.redemption_torn"` s
+   `transactionId` — ať je roztržený stav dohledatelný, ne tichý.
+3. Detekční dotaz pro podporu/reconciliaci: `vpc_ledger_entries` řádky
+   navázané na `transaction_id`, ke kterému NEEXISTUJE odpovídající
+   `vpc_redemptions` řádek = roztržená transakce, potřebuje ruční kontrolu.
+   Tenhle signál appka (mlčky) používala už u jednoúčtového čerpání dřív,
+   jen teď má vyšší váhu, protože jde o víc firem najednou.
+4. Doplácení mezi firmami NENÍ automatické — appka ho jen nabídne
+   (`needsGroupSettlement`), operátor musí výslovně potvrdit
+   (`confirmGroupSettlement`) v samostatném požadavku. Snižuje frekvenci
+   týhle cesty kódu vůbec (spouští se jen při vědomém potvrzení, ne při
+   každém čerpání), ne pravděpodobnost částečného selhání v ní.
+
+**Skutečné řešení:** stejné jako #2 — Postgres RPC s row-level lockem
+(`SELECT ... FOR UPDATE`) přes všechny zapojené účty najednou v jedné
+skutečné DB transakci. Odloženo do hardening fáze, teď zmírněno na
+"detekovatelné a dohledatelné", ne "vyloučené".
+
+Odkazy v kódu: `app/api/business/pos/redeem/route.ts` (větev
+`multi_issuer_program_id`), `vpc_inter_issuer_settlements` tabulka.
+
+**Tři chyby nalezené při ověřování (6. 8. 2026), ne hlášeným problémem:**
+1. **Dvojí započtení doplatku (OPRAVENO).** Odečet vlastního účtu ve větvi
+   `confirmGroupSettlement` používal `amount` (celou požadovanou částku)
+   místo `ownBalance` (jen vlastní podíl) — vlastní účet se odečetl o celou
+   částku a doplácející firmy JEŠTĚ ZVLÁŠŤ o svůj podíl navíc. Empiricky
+   potvrzeno: 900 Kč čerpání s vlastním zůstatkem 600 Kč poslalo vlastní
+   účet do −300. Viz i bod #15 níž — přesně tahle třída chyby je důvod, proč
+   teď existuje `CHECK (balance_after >= 0)`.
+2. **Nulový odečet při vyčerpaném vlastním účtu (OPRAVENO).** Když je
+   `ownBalance` přesně 0 (účet firmy už nemá co čerpat), kód se pokoušel
+   zapsat odečet o částce 0 — `CHECK (vpc_ledger_entries_amount_check)` ho
+   odmítl a celá transakce se čestně "roztrhla" (žádný částečný zápis,
+   ale doplatek neprošel vůbec). Oprava: když je vlastní podíl 0, appka ho
+   do hlavní knihy vůbec nezapisuje, doplatek jde celý ze skupiny.
+3. **Syrová chyba databáze při souběžném dvojkliku (OPRAVENO).** `idempotency_key`
+   má `UNIQUE` na `vpc_transactions`, takže i dva požadavky vyslané doopravdy
+   současně (ne po sobě) zapíšou odečet jen jednou — druhý insert transakce
+   selže dřív, než se cokoli odečte z hlavní knihy. Data byla tedy vždycky
+   v pořádku, ale prohraný požadavek dostal zpátky syrovou Postgres chybu
+   (`duplicate key value violates unique constraint...`) místo srozumitelné
+   odpovědi — a taková chyba navíc prozrazuje obsluze vnitřní strukturu
+   databáze. Oprava: kód `23505` se teď pozná a vrátí stejné
+   `{ok:true, alreadyProcessed:true}` jako sekvenční dvojklik. Stejná oprava
+   aplikována i na jednovydavatelskou větev (samostatný commit, údržba
+   jádra — viz git historie).
+
+Ověřeno po opravě: sekvenční i skutečně souběžný dvojitý požadavek vždy
+zapíše odečet přesně jednou. Edge-case kolo (6. 8. 2026): částka přesně
+rovná vlastnímu zůstatku (jednoduchá cesta, ne skupinový doplatek), částka
+přesně rovná celkovému zůstatku karty (vyčerpá všechny firmy do nuly,
+status přejde na `used`), karta se zůstatkem jen u jedné firmy (jak
+čerpání zevnitř té firmy, tak doplatek odjinud s vlastním podílem 0), a
+doplatek přesahující i součet všech ostatních firem (odmítnuto, nulový
+zápis do databáze) — všechno sedí.
+
+---
+
+## 14. "Karta má vždycky aspoň jeden účet" už negarantuje databáze, ale appka
+
+**Problém:** `vpc_vouchers.account_id` byl dřív efektivně vždy vyplněný
+(kromě krátkého okna u dárkových/admin-vydaných voucherů před aktivací,
+`status='issued'`) — CHECK constraint `vpc_vouchers_account_required_unless_pending_gift`
+to hlídal. Kvůli vícevydavatelským kartám (žádný jednotný `account_id`,
+hodnota žije ve `vpc_voucher_issuer_accounts`) jsme constraint rozšířili
+o třetí legální případ: `multi_issuer_program_id IS NOT NULL`. To ale
+znamená, že databáze už NEGARANTUJE, že taková karta má vůbec nějaký
+skutečný účet — teoreticky by šlo mít `vpc_vouchers` řádek s
+`multi_issuer_program_id` vyplněným a nulou řádků v
+`vpc_voucher_issuer_accounts` k němu.
+
+**Zmírněno teď (aplikační vrstva, ne databáze):**
+1. Vydávací route (`POST /api/admin/multi-issuer/issue`) odmítne program
+   s méně než dvěma členy hned na vstupu — "vícevydavatelský" znamená
+   aspoň dva, ne jeden.
+2. `vpc_voucher_issuer_accounts` se zapisují hned po založení
+   `vpc_vouchers` řádku, PŘED transakcí/ledgerem, a appka ověří, že vzniklo
+   přesně tolik řádků, kolik má program členů — ne "nějaké".
+3. Při selhání (chyba zápisu, nebo počet řádků nesedí) appka rovnou smaže
+   právě založený `vpc_vouchers` řádek (kompenzační úklid — appka nemá
+   skutečnou DB transakci napříč REST voláními, stejné omezení jako #2/#13)
+   a vrátí chybu, ať nikdy nevznikne karta bez účtů.
+
+**Skutečné řešení:** stejné jako u #2/#13 — Postgres RPC/DB transakce by
+tohle vynucovalo na úrovni databáze znovu, ne aplikační konvencí, která
+se dá při budoucí úpravě kódu omylem obejít.
+
+Odkazy v kódu: `app/api/admin/multi-issuer/issue/route.ts`. Definice
+constraintu nese od 8/2026 i `COMMENT ON CONSTRAINT` vysvětlující obě
+NULL výjimky, ať jméno ("account required unless pending gift") za rok
+nemate u třetí, novější výjimky.
+
+---
+
+## 15. `CHECK (balance_after >= 0)` na `vpc_ledger_entries`
+
+**Proč vznikl:** ověřování vícevydavatelského čerpání (bod #13) odhalilo
+skutečnou chybu, která poslala účet do záporného zůstatku (−300 Kč) —
+u voucherů/kont v týhle appce nemá záporný zůstatek nikdy žádný smysl,
+takže se nemá o co přijít tím, že to appka natvrdo zakáže na úrovni
+databáze, ne jen spoléháním na to, že appkový kód bude vždycky správný.
+
+**Řešení (spuštěno 6. 8. 2026):**
+```sql
+ALTER TABLE vpc_ledger_entries
+  ADD CONSTRAINT vpc_ledger_entries_balance_after_non_negative
+  CHECK (balance_after >= 0) NOT VALID;
+```
+`NOT VALID` = nekontroluje historické řádky (viz nález níž), ale hlídá
+úplně každý nový zápis od chvíle spuštění — žádná appková logika ho nejde
+obejít, protože běží v databázi, ne v appce.
+
+**Vedlejší přínos, který stojí za vypíchnutí:** tohle je past do budoucna.
+Kdyby se stejná třída chyby jako ta z bodu #13 (dvojí započtení doplatku)
+objevila znovu — ať už novým bugem, nebo souběhem, který appka nestihla
+ošetřit — appka to dřív potichu zapsala jako záporné číslo. Teď takový
+zápis nahlas selže (`23514`, přesně jak to zachytil test v bodě #13) a
+appka to má už dnes ošetřené jako běžné selhání zápisu (čestná chyba,
+`voucher.redemption_torn` audit signál) — ne jako tichou, nepozorovanou
+korupci dat.
+
+**Historický nález, který `ADD CONSTRAINT` zablokoval a musel se obejít
+přes `NOT VALID`:** `vpc_ledger_entries.id=12`, účet `cfe13ba6...`
+(robert.melc@gmail.com, program "Ambassador", voucher `GB-AMB-0001`),
+první záznam v hlavní knize toho účtu je odečet 300 Kč rovnou do
+`balance_after = -300`, `created_at 2026-07-30T08:46:21`.
+
+**Vyšetřeno (6. 8. 2026), jestli cesta, co to vyrobila, ještě žije:**
+- Jednovydavatelská POS redeem route (jediné místo v appce, co píše
+  transakce typu `redeem`) má kontrolu `amount > balance` → 400 už od
+  svého jediného commitu (`bc2bdbb`, 2026-07-29 17:21) — tedy DŘÍV, než
+  vadný řádek vznikl (2026-07-30 08:46). Živá appková cesta v tu chvíli
+  už zůstatek hlídala.
+- `vpc_audit_log` v okně ±10 minut kolem vzniku řádku neobsahuje žádný
+  `voucher.redeemed`/`voucher.redemption_rejected`/`voucher.redemption_torn`
+  záznam — jen běžné prohlížení admin stránek. Appka při skutečném čerpání
+  audit log VŽDY zapisuje; jeho nepřítomnost je silný signál, že tenhle
+  zápis appkou vůbec neprošel.
+- Metadata transakce jsou prázdná (`{}`) — živá redeem route je vždy plní
+  aspoň `{voucher_id: ...}`.
+- `vpc_voucher_programs.created_at` (program "Ambassador") a první ledger
+  řádek toho účtu mají identický timestamp na mikrosekundu — typický
+  otisk dávkově vloženého seed/demo řádku, ne organického použití appky
+  postupně v čase.
+
+**Závěr:** shoda důkazů ukazuje na ruční/skriptem vložená data z rané fáze
+vývoje (demo karta pro náhled šablony "Ambassador"), ne na živou appkovou
+chybu. Podle rozhodnutí (6. 8. 2026) řádek zůstává nedotčený — je to
+známý, zdokumentovaný dluh ve starých datech, ne otevřené riziko.
+
+Odkazy v kódu: `app/api/business/pos/redeem/route.ts` (obě větve,
+`vpc_ledger_entries.insert`), `lib/ledger.ts`.
+
+---
+
+*Aktualizováno: vícevydavatelské karty — tři chyby nalezené a opravené při ověřování (bod 13), CHECK proti zápornému zůstatku (bod 15), 8. 2026.*
