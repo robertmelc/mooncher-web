@@ -499,6 +499,14 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (txError || !transaction) {
+    // Souběh dvou požadavků se stejným idempotencyKey (dvojklik na
+    // "Potvrdit uplatnění") — UNIQUE na idempotency_key zaručuje, že projde
+    // jen jeden insert transakce. Ten druhý to má vrátit jako honest "už
+    // hotovo", ne jako syrovou chybu databáze, která navíc prozrazuje
+    // vnitřní strukturu obsluze u pultu.
+    if (txError?.code === "23505") {
+      return NextResponse.json({ ok: true, alreadyProcessed: true });
+    }
     return NextResponse.json({ ok: false, error: txError?.message ?? "Zápis transakce selhal." }, { status: 500 });
   }
 
