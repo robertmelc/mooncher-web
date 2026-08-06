@@ -5,6 +5,13 @@ import { normalizeEmail } from "@/lib/email";
 import { voucherEyebrow } from "@/lib/vouchers";
 import { resolveOrCreateAccount } from "@/lib/accounts";
 
+// Stejný Next.js App Router bug jako u výherního listu a referral pozvánky
+// (HARDENING #12): GET bez čtení hlaviček/cookies/query appka bere jako
+// staticky cachovatelný a zamrzne první odpověď navěky — tady konkrétně
+// riziko, že appka dál ukazuje voucher jako "volný k aktivaci" i poté,
+// co ho někdo mezitím aktivoval.
+export const dynamic = "force-dynamic";
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const RATE_LIMIT_WINDOW_MINUTES = 10;

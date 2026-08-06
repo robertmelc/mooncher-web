@@ -357,14 +357,17 @@ nečte):**
   jádra platformy, samostatný commit). Veřejný náhled referral pozvánky
   (`clientName`/`referrerName`). Nižší praktická závažnost — tahle data
   se prakticky nemění po vzniku kódu — ale stejná třída chyby.
-- `app/api/activate/[token]/route.ts` — **NEOPRAVENO, vědomě.** Veřejný
-  náhled aktivace vouchru (`issuedToName`, `message`, jestli je voucher
-  ještě volný k aktivaci — `voucher.status !== "issued" || voucher.account_id`).
-  Zamrzlá odpověď by mohla ukazovat voucher jako "ještě volný k aktivaci"
-  i poté, co ho někdo mezitím aktivoval — zavádějící UX, ale samotná
-  aktivace (`POST`) si stav ověřuje znovu z DB, takže ne bezpečnostní
-  díra, jen matoucí náhled. Ze všech nalezených nejblíž penězům/reálným
-  voucherům, proto vyšší priorita k opravě než referral.
+- `app/api/activate/[token]/route.ts` — **OPRAVENO** 6. 8. 2026 (údržba
+  jádra platformy, samostatný commit). Veřejný náhled aktivace vouchru
+  (`issuedToName`, `message`, jestli je voucher ještě volný k aktivaci —
+  `voucher.status !== "issued" || voucher.account_id`). Zamrzlá odpověď by
+  mohla ukazovat voucher jako "ještě volný k aktivaci" i poté, co ho někdo
+  mezitím aktivoval — zavádějící UX, samotná aktivace (`POST`) si stav
+  ověřuje znovu z DB, takže nešlo o bezpečnostní díru, jen o matoucí náhled.
+  Ze všech nalezených nejblíž penězům/reálným voucherům — proto opraveno
+  hned, přestože byla nalezena při tomhle auditu, ne kvůli nahlášenému
+  problému (na rozdíl od `win/[id]`, kde appku na chybu upozornil reálný
+  test zneplatnění).
 
 **Zbylých 25 GET handlerů** (`/api/admin/*`, `/api/business/*`,
 `/api/vouchers/[id]/referral*`) skutečně čtou `Authorization` hlavičku —
@@ -379,8 +382,10 @@ Next.js dynamiku detekuje. Nižší jistota, ale žádný z nich není veřejný
 (všechny vyžadují platnou session), takže i kdyby cachovaly, dopad by byl
 "vidím svoje vlastní stará data", ne cizí/citlivá.
 
-**Skutečné řešení:** opravovat podle týhle priority (peníze/veřejné napřed),
-ne nahodile — `activate/[token]` je další na řadě.
+**Skutečné řešení:** u zbylých dvou neověřených (`vouchers/[id]/referral/route.ts`,
+`.../invites/route.ts`) provést stejný "rozbij a oprav" test, ne se
+spokojit s odvozením — u všech tří dosud potvrzených případů odhad seděl,
+ale to je důvod nespěchat, ne důvod to natrvalo neověřit.
 
 Odkazy v kódu: viz seznam výše.
 
