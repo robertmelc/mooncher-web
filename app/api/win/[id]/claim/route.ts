@@ -121,5 +121,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     after_state: { winningTicketId: ticket.id },
   });
 
+  // Propojení je VOLITELNÉ a nikdy nemění výsledek tohohle requestu — jde
+  // jen o to, aby po skutečně ověřeném uplatnění (SMS kód výš) appka věděla,
+  // komu list patří, POKUD zrovna byl přihlášený. Bez tokenu, s neplatným
+  // tokenem, nebo bez napojeného vpc_end_users řádku appka mlčky pokračuje
+  // jako dřív — guest cesta se tímhle nesmí nijak změnit, viz konverzace.
+  const accessToken = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (accessToken) {
+    const { data: userData } = await admin.auth.getUser(accessToken);
+    if (userData?.user) {
+      const { data: endUser } = await admin
+        .from("vpc_end_users")
+        .select("id")
+        .eq("auth_user_id", userData.user.id)
+        .maybeSingle();
+      if (endUser) {
+        await admin.from("chr_winning_tickets").update({ claimed_by_end_user_id: endUser.id }).eq("id", ticket.id);
+      }
+    }
+  }
+
   return NextResponse.json({ ok: true });
 }

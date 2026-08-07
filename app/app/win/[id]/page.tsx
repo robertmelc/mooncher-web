@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/format";
+import { supabase } from "@/lib/supabase/client";
 import styles from "./WinningTicket.module.css";
 
 type Ticket = {
@@ -78,9 +79,18 @@ export default function WinningTicketPage({ params }: { params: { id: string } }
     setSubmitting(true);
     setSubmitError(null);
 
+    // Přihlášení je tu čistě volitelné (viz konverzace) — appka se nikoho
+    // neptá, jen pošle token dál, POKUD zrovna nějaký má. Bez session se
+    // pošle přesně stejný request jako dřív, guest cesta se nemění.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+
     const res = await fetch(`/api/win/${params.id}/claim`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({ code: code.trim(), fullName: fullName.trim(), bankAccount: bankAccount.trim(), phone: phone.trim() }),
     });
     const json = await res.json();
