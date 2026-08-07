@@ -29,7 +29,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: operator.error }, { status: operator.status });
   }
 
-  const code = req.nextUrl.searchParams.get("code")?.trim();
+  // Kódy generuje appka vždy velkými písmeny (viz CODE_CHARS v
+  // lib/voucherIssuance.ts), ale porovnání v DB je case-sensitive a mobilní
+  // klávesnice běžně píše malými — bez normalizace by legitimní kód od
+  // operátora u pultu nešel najít.
+  const code = req.nextUrl.searchParams.get("code")?.trim().toUpperCase();
   if (!code) {
     return NextResponse.json({ ok: false, error: "Chybí kód." }, { status: 400 });
   }

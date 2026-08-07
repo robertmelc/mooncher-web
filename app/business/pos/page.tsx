@@ -229,8 +229,9 @@ export default function PosPage() {
               <input
                 type="text"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
                 placeholder="např. CFL-8821"
+                autoCapitalize="characters"
                 className="flex-1 rounded-sm border border-line-strong bg-panel px-3 py-2 text-sm text-ink"
               />
               <button
