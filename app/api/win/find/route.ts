@@ -7,6 +7,11 @@ import { sendSms } from "@/lib/sms";
 const RATE_LIMIT_WINDOW_MINUTES = 10;
 const RATE_LIMIT_MAX_ATTEMPTS = 5;
 
+// vpc_audit_log.target_id je uuid, ne text — telefon tam nejde uložit
+// přímo. Skutečný klíč pro limiter je after_state.phone; target_id nese
+// jen neutrální sentinel, ať projde NOT NULL/uuid omezením sloupce.
+const NO_TARGET_SENTINEL = "00000000-0000-0000-0000-000000000000";
+
 const GENERIC_RESPONSE = { ok: true, message: "Pokud k tomuto číslu výhra existuje, poslali jsme odkaz SMS." };
 
 async function isRateLimited(admin: ReturnType<typeof createAdminClient>, phone: string) {
@@ -14,9 +19,8 @@ async function isRateLimited(admin: ReturnType<typeof createAdminClient>, phone:
   const { count, error } = await admin
     .from("vpc_audit_log")
     .select("id", { count: "exact", head: true })
-    .eq("target_table", "chr_winning_tickets")
-    .eq("target_id", phone)
     .eq("action", "charity.ticket_resend_requested")
+    .eq("after_state->>phone", phone)
     .gte("created_at", since);
 
   if (error) return false;
@@ -53,7 +57,8 @@ export async function POST(req: NextRequest) {
     actor_type: "system",
     action: "charity.ticket_resend_requested",
     target_table: "chr_winning_tickets",
-    target_id: phone,
+    target_id: NO_TARGET_SENTINEL,
+    after_state: { phone },
   });
 
   const { data: tickets } = await admin
